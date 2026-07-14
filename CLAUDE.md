@@ -4,102 +4,73 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-**Empty scaffold.** The repo contains only `README.md`, `LICENSE` (Apache-2.0), and `ROADMAP.md`;
-remote is `github.com/bpmn-os/bpmnos-wasm`. Nothing has been built yet — the goal, layout, and
-wiring below describe the *intended* project, drawn from its source repositories. When you add real
-code, update this file to match (and drop this notice).
+The interactive bridge exists and is tested. The repository compiles the C++ BPMNOS execution engine
+and exposes a JavaScript facing interface that drives it. Three classes in the namespace
+`BPMNOS::WASM` make up the bridge. The monitor is a passive observer that records the token, event,
+and message log. The controller is an event dispatcher that supplies the caller's decisions and owns
+the opaque handle registry. The engine class owns the execution engine and drives its lifecycle. All
+four decision kinds, entry, exit, choice, and message delivery, are implemented, and two native tests
+drive real fixtures and pass with no sanitizer finding.
 
-**Read `ROADMAP.md` first** — it holds the milestone plan, the verified interactive execution model,
-and the two load-bearing design decisions (handle-based boundary, snapshot drive-loop).
+The WebAssembly build is in progress on the `feature/wasm-build` branch and is not yet on the
+integration branch. The bridge sources compile under Emscripten without change; the remaining work is
+confined to the engine's dependencies and to cross compiling xerces and bpmn++. That branch carries a
+note recording the precise state and the plan.
 
-## Goal
+Read `ROADMAP.md` for the milestone plan, the verified model of how the engine executes, and the
+reasoning behind the design. Read `README.md` for the account of the architecture and the driving
+model. This file records what is needed to work in the code.
 
-`bpmnos-wasm` is the **WebAssembly build of the C++ BPMN-OS engine plus its JS glue** — a
-distributable module that runs the real engine in the browser (and Node). It is the piece that
-[`bpmnos-workbench`](../../bpmnos-workbench) depends on: workbench is to `bpmnos-js` what
-`bpmn-workbench` is to `bpmn-js`, but its playback/simulation must reflect **real BPMNOS extension
-semantics** (status attributes, operators, restrictions, decisions, objectives) instead of the JS
-token simulator. That means driving playback from the actual engine — which is what this repo
-compiles and exposes.
+## Building and testing
 
-The JS-facing API is **interactive**, not just a batch runner. JS acts as the engine's dispatcher:
+The bridge consumes the engine's amalgamated headers and its prebuilt static libraries and never
+modifies or rebuilds the engine. The default engine location is a sibling checkout, overridable with
+the `BPMNOS_ENGINE_DIR` cache variable.
 
-- **Inputs:** load a BPMN model XML, lookup CSV tables (folder or the tables directly), and an
-  instance CSV — all as in-memory strings written to Emscripten MEMFS.
-- **Observe:** stream the engine's token/event/message log out via the `Observer` interface (or a
-  dedicated bridge observer) — the same JSON the native `Recorder` emits.
-- **Drive:** JS creates `ClockTickEvent`s and all four decision types (entry/exit/choice/message
-  delivery) and passes them to the engine; JS runs and resumes the engine (`run`/`resume`).
-- **Concurrency-robust:** a decision request may expire, a subprocess may be interrupted, a
-  sequential performer may be taken. The engine already handles this via weak-ptr auto-pruning and
-  command guards; the wasm layer must **surface** it, never crash. Two rules enforce this: JS holds
-  only **opaque, liveness-validated handles** (never C++ pointers), and JS drains a **snapshot after
-  each `resume()`** rather than being called back mid-run. See `ROADMAP.md`.
-
-**Not in this repo:** the animation-log *adapter* (mapping the engine's token vocabulary to
-`bpmn-js-animation`'s `createToken|advanceToken|forkToken|joinTokens|consumeToken` log) lives in
-**`bpmnos-workbench`**, not here. This repo's contract is to deliver the raw engine token stream and
-the interactive drive API; workbench adapts it. Keep that boundary.
-
-## Source repositories (read these first)
-
-All are siblings under `~/Code` / `~/Code/bpmnos`; each has its own `CLAUDE.md`.
-
-- **`~/Code/bpmnos/engine`** — the **C++23 BPMN-OS engine** this repo compiles to wasm. Standard
-  CMake build producing two static libs (`bpmnos-model`, `bpmnos-execution`) and the `bpmnos-greedy`
-  executable. Namespaces `BPMNOS::Model` (parsing/data) and `BPMNOS::Execution`
-  (engine/controller/observer). `app/main.cpp` is the reference for how the pieces compose and what a
-  wasm entry point must replicate.
-- **`~/Code/bpmnos/bpmnos-workbench`** — the **consumer**. Its `CLAUDE.md` documents the playback
-  data contract and the token-vocabulary adaptation this repo feeds into.
-- **`~/Code/bpmnos/bpmnos-js`** — the bpmn-js BPMNOS modules (moddle extension, decision-task
-  renderer, properties panel) the workbench app builds on. Not a build dependency of the wasm module,
-  but defines the same extension elements the engine parses.
-
-## Key seam: the Observer interface
-
-The engine streams execution via one virtual method (`engine/execution/engine/src/Observer.h`):
-`notice(const Observable*)`. Subscribe with
-`engine->addSubscriber(observer, Observable::Type::{Token,Event,Message})`. The native `Recorder`
-(`engine/execution/observer/src/Recorder.{h,cpp}`) is such an `Observer`; each token change calls
-`notice()`, which serialises `Token::jsonify()`. A **token observable** looks like:
-
-```jsonc
-{ "processId": "...", "instanceId": "...", "nodeId": "...", "sequenceFlowId": "...",
-  "state": "ARRIVED|READY|ENTERED|BUSY|COMPLETED|EXITING|DEPARTED|...",
-  "status": { /* named status attributes */ }, "data": { /* named data attributes */ } }
+```
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-For wasm, implement a JS-facing `Observer` (in place of, or alongside, `Recorder`) that forwards each
-`notice()` payload across the boundary, so the JS side receives the same token JSON.
+The prebuilt engine archives are compiled with the address, undefined, and leak sanitizers, so the
+build links the bridge and the tests the same way. This is not optional; a plain link fails to
+resolve the sanitizer runtime. If a release build of the engine is used instead, clear the
+`BPMNOS_SANITIZE` cache variable. The tests read their fixtures from an absolute path passed on the
+command line, so they do not depend on the working directory.
 
-## Compiling the engine to wasm
+## Working with the engine
 
-**No Emscripten setup exists yet** — the engine is a native CMake build (`-Werror` C++23). Expect to
-add an Emscripten toolchain build (`emcmake cmake` / `emmake make`, or a dedicated CMake profile)
-that emits a wasm module + JS glue. Keep the wasm build **out of the engine repo's default targets**
-unless coordinated there; prefer consuming the engine from *this* repo (submodule / FetchContent /
-sibling path) over patching it.
+The engine is treated as fixed and is not to be changed. Everything the bridge needs is reachable
+through the engine's public interface, its public system state, and the fact that a token and a
+message each yield a weak pointer to themselves. Confirm any engine fact against the source under
+`../engine` rather than assuming it, and check the BPMN specification where the behaviour is a
+specification matter.
 
-The hard part is the engine's native dependencies, which must also build under Emscripten:
+A few facts discovered while building the bridge are easy to get wrong. A choice of a decision task
+is defined either as an enumeration or as a bounded range, and the engine's `getEnumeration` and
+`getBounds` each assert unless called for the matching kind, so the kind must be discriminated on the
+choice's `enumeration` member before either is called. A static scenario reports completion only once
+simulated time has passed the last instantiation, so a model with a single instance at time zero
+stays alive after all its work is done until time advances, which is why a clock is needed to reach a
+formally terminal state even for a model without timers. The engine's pending decision lists prune
+expired entries only while they are traversed, so the bridge treats its own weak pointer, not
+membership in a list, as the test of liveness, and it never holds a strong reference that would keep
+an engine object alive.
 
-- **System-installed** (native build): Xerces-C++ 3.2.x, [`bpmn++`](https://github.com/bpmn-os/bpmnpp),
-  [`schematic++`](https://github.com/rajgoel/schematicpp) (generates the BPMN XSD parser at build
-  time). Xerces is the notable wasm hurdle — either cross-compile it for wasm or replace/stub the XML
-  parsing path.
-- **Fetched via CMake `FetchContent`**: cnl (fixed-point numerics), limex (expression evaluation),
-  nlohmann/json, strutil, Catch2. These are header/portable C++ and should port more readily.
+Advancing simulated time by a clock tick is not yet implemented. Whether the engine class injects it
+or the controller dispatches it is an open question left for a session that settles it together.
 
-Consumers (the app, tests) include the engine's **generated single headers** (`lib/bpmnos-model.h`,
-`lib/bpmnos-execution.h`), not individual source headers — link the wasm build against those.
+## Branching
 
-## Expected stack & conventions (once scaffolded)
+The `develop` branch is the integration branch. Each independent feature is developed on its own
+`feature` branch and merged into `develop` with a merge commit, so that a feature is one revertable
+commit in review. Commit only what compiles and passes its test. The engine may not be modified; a
+change that genuinely requires one is proposed for approval first, and experimental changes to a
+local copy of a dependency belong under a build directory rather than in the engine.
 
-- **JS side:** follow bpmnos-js / bpmn-workbench — **Vite** (`npm run dev` / `build` / `preview`),
-  ESM, `"node": ">=22"`, `node --test test/*.test.mjs` for tests. Ship a package the workbench can
-  depend on (wasm binary + JS glue + typed-ish API surface).
-- **C++ side:** the engine is strict C++23 (`-Werror -Wpedantic -Wall -Wextra -Wconversion
-  -Wsign-conversion -Wshadow=local`). Numeric values use `BPMNOS::number` (cnl fixed-point);
-  convert via `BPMNOS::to_number` / typed conversions, not raw casts. Any glue/binding code that
-  touches engine types must honour these.
-- License is **Apache-2.0** here (the engine and bpmn-os repos vary — check each; do not assume MIT).
+## Relationship to the workbench
+
+The translation of the engine's token vocabulary into an animation or playback log lives in
+`bpmnos-workbench`, not here. This repository delivers the engine's own record and the interactive
+drive interface; the workbench adapts it. That boundary is deliberate and is kept.

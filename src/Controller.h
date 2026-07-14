@@ -31,11 +31,13 @@ using json = nlohmann::ordered_json;
 ///
 /// The four decision kinds are named "entry", "exit", "choice", and "messageDelivery". A
 /// submitted decision is a JSON object of the form
-///   {"requestId": n, "type": "entry|exit|choice",
-///    "status": [ ... ]?, "choices": [ ... ]?}
-/// where status overrides the token status on entry or exit and is otherwise omitted, and
-/// choices supplies one value per choice of a decision task. Message delivery is not yet
-/// implemented and is rejected on submission.
+///   {"requestId": n, "type": "entry|exit|choice|messageDelivery",
+///    "status": [ ... ]?, "choices": [ ... ]?, "messageId": m?}
+/// where status overrides the token status on entry or exit and is otherwise omitted, choices
+/// supplies one value per choice of a decision task, and messageId names one of the candidate
+/// messages the corresponding pending decision offered. A message delivery pending decision
+/// carries, under "candidates", the messages that may be delivered to the waiting token, each
+/// with its own identifier and its serialised content.
 class Controller : public Execution::EventDispatcher {
 public:
   Controller();
@@ -72,8 +74,14 @@ private:
   /// handle. Returns a null pointer and sets error when the handle is no longer valid.
   std::shared_ptr<Execution::Event> makeEvent(const json& decision, std::string& error);
 
-  std::map<std::uint64_t, Handle> handles;                                ///< identifier to handle
-  std::map<const Execution::DecisionRequest*, std::uint64_t> idByRequest; ///< stable identifier reuse
+  /// Enumerates the pool messages that may be delivered to the given waiting token, assigning
+  /// and reusing a stable identifier for each. Returns a json array of {"messageId", "message"}.
+  json messageCandidates(Execution::Token* token, const Execution::SystemState* systemState);
+
+  std::map<std::uint64_t, Handle> handles;                                ///< identifier to decision handle
+  std::map<const Execution::DecisionRequest*, std::uint64_t> idByRequest; ///< stable decision identifier reuse
+  std::map<std::uint64_t, std::weak_ptr<Execution::Message>> messageHandles;   ///< identifier to message handle
+  std::map<const Execution::Message*, std::uint64_t> idByMessage;              ///< stable message identifier reuse
   std::deque<json> queue;                                                 ///< decisions awaiting dispatch
   std::uint64_t nextId = 1;
 };

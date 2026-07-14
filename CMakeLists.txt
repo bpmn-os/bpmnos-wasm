@@ -45,9 +45,7 @@ if(NOT EMSCRIPTEN)
 
   # The engine archives are placed in a linker group because the model and execution
   # libraries reference each other.
-  add_executable(native_drive_test test/native/drive_test.cpp)
-  target_link_libraries(native_drive_test PRIVATE
-    bpmnos_wasm
+  set(BPMNOS_ENGINE_LINK
     -Wl,--start-group
     ${BPMNOS_ENGINE_DIR}/lib/libbpmnos-execution.a
     ${BPMNOS_ENGINE_DIR}/lib/libbpmnos-model.a
@@ -56,6 +54,20 @@ if(NOT EMSCRIPTEN)
     xerces-c
     pthread
   )
+
+  add_executable(native_drive_test test/native/drive_test.cpp)
+  target_link_libraries(native_drive_test PRIVATE bpmnos_wasm ${BPMNOS_ENGINE_LINK})
+
+  add_executable(native_message_test test/native/message_test.cpp)
+  target_link_libraries(native_message_test PRIVATE bpmnos_wasm ${BPMNOS_ENGINE_LINK})
+
+  # Register the tests with CTest so that `ctest --test-dir build` runs them all. Each test
+  # reads its fixtures from an absolute path so it does not depend on the working directory,
+  # and each runs with leak detection enabled, since both are leak clean.
+  enable_testing()
+  add_test(NAME drive COMMAND native_drive_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
+  add_test(NAME message COMMAND native_message_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
+  set_tests_properties(drive message PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_leaks=1")
 endif()
 
 # WebAssembly module. Built only under the Emscripten toolchain. This path is scaffolding: it
