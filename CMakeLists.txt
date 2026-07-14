@@ -60,4 +60,12 @@ if(NOT EMSCRIPTEN)
 
   add_executable(native_message_test test/native/message_test.cpp)
   target_link_libraries(native_message_test PRIVATE bpmnos_wasm ${BPMNOS_ENGINE_LINK})
+
+  # Register the tests with CTest so that `ctest --test-dir build` runs them all. Each test
+  # reads its fixtures from an absolute path so it does not depend on the working directory,
+  # and each runs with leak detection enabled, since both are leak clean.
+  enable_testing()
+  add_test(NAME drive COMMAND native_drive_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
+  add_test(NAME message COMMAND native_message_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
+  set_tests_properties(drive message PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_leaks=1")
 endif()
