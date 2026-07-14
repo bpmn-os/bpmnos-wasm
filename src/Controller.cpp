@@ -1,5 +1,7 @@
 #include "Controller.h"
 
+#include <algorithm>
+#include <ranges>
 #include <string>
 
 #include "Convert.h"
@@ -47,6 +49,45 @@ json choiceMetadata(Execution::Token* token) {
 Controller::Controller() = default;
 Controller::~Controller() = default;
 
+json Controller::messageCandidates(Execution::Token* token, const Execution::SystemState* systemState) {
+  json out = json::array();
+  if (!systemState || !token->node || !token->node->extensionElements) {
+    return out;
+  }
+  auto* extensionElements = token->node->extensionElements->as<Model::ExtensionElements>();
+  if (!extensionElements) {
+    return out;
+  }
+  const auto* messageDefinition = extensionElements->getMessageDefinition(token->status);
+  if (!messageDefinition) {
+    return out;
+  }
+  auto recipientHeader = messageDefinition->getRecipientHeader(
+    token->getAttributeRegistry(), token->status, *token->data, token->globals);
+  const auto& senders = extensionElements->messageCandidates;
+  for (const auto& message : systemState->messages) {
+    if (!message || message->state != Execution::Message::State::CREATED) {
+      continue;
+    }
+    if (!std::ranges::contains(senders, message->origin) || !message->matches(recipientHeader)) {
+      continue;
+    }
+    const Execution::Message* messagePtr = message.get();
+    std::uint64_t messageId;
+    auto found = idByMessage.find(messagePtr);
+    if (found != idByMessage.end()) {
+      messageId = found->second;
+    }
+    else {
+      messageId = nextId++;
+      idByMessage[messagePtr] = messageId;
+      messageHandles[messageId] = message->weak_from_this();
+    }
+    out.push_back(json{ {"messageId", messageId}, {"message", message->jsonify()} });
+  }
+  return out;
+}
+
 json Controller::pendingDecisions(const Execution::SystemState* systemState) {
   json arr = json::array();
   if (!systemState) {
@@ -76,6 +117,9 @@ json Controller::pendingDecisions(const Execution::SystemState* systemState) {
       entry["token"] = token->jsonify();
       if (std::string(type) == "choice") {
         entry["choices"] = choiceMetadata(token.get());
+      }
+      else if (std::string(type) == "messageDelivery") {
+        entry["candidates"] = messageCandidates(token.get(), systemState);
       }
       arr.push_back(std::move(entry));
     }
@@ -107,11 +151,18 @@ json Controller::submitDecision(const json& decision) {
   if (it->second.type != type) {
     return json{ {"rejected", "type mismatch"}, {"requestId", id} };
   }
-  if (type == "messageDelivery") {
-    return json{ {"rejected", "messageDelivery not yet implemented"}, {"requestId", id} };
-  }
   if (type == "choice" && !decision.contains("choices")) {
     return json{ {"rejected", "choice requires choices"}, {"requestId", id} };
+  }
+  if (type == "messageDelivery") {
+    if (!decision.contains("messageId")) {
+      return json{ {"rejected", "messageDelivery requires messageId"}, {"requestId", id} };
+    }
+    auto messageId = decision["messageId"].get<std::uint64_t>();
+    auto messageIt = messageHandles.find(messageId);
+    if (messageIt == messageHandles.end() || messageIt->second.expired()) {
+      return json{ {"rejected", "message unknown or expired"}, {"requestId", id}, {"messageId", messageId} };
+    }
   }
   queue.push_back(decision);
   return json{ {"queued", id} };
@@ -172,6 +223,18 @@ std::shared_ptr<Execution::Event> Controller::makeEvent(const json& decision, st
   }
   else if (type == "choice") {
     event = std::make_shared<Execution::ChoiceEvent>(token.get(), toChoiceValues(decision.at("choices")));
+  }
+  else if (type == "messageDelivery") {
+    auto messageId = decision.value("messageId", std::uint64_t{ 0 });
+    auto messageIt = messageHandles.find(messageId);
+    auto message = (messageIt != messageHandles.end()) ? messageIt->second.lock() : nullptr;
+    if (!message) {
+      error = "message expired";
+      return nullptr;
+    }
+    event = std::make_shared<Execution::MessageDeliveryEvent>(token.get(), message.get());
+    idByMessage.erase(message.get());
+    messageHandles.erase(messageId);
   }
   else {
     error = "unsupported type: " + type;

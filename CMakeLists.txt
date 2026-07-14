@@ -45,9 +45,7 @@ if(NOT EMSCRIPTEN)
 
   # The engine archives are placed in a linker group because the model and execution
   # libraries reference each other.
-  add_executable(native_drive_test test/native/drive_test.cpp)
-  target_link_libraries(native_drive_test PRIVATE
-    bpmnos_wasm
+  set(BPMNOS_ENGINE_LINK
     -Wl,--start-group
     ${BPMNOS_ENGINE_DIR}/lib/libbpmnos-execution.a
     ${BPMNOS_ENGINE_DIR}/lib/libbpmnos-model.a
@@ -56,4 +54,10 @@ if(NOT EMSCRIPTEN)
     xerces-c
     pthread
   )
+
+  add_executable(native_drive_test test/native/drive_test.cpp)
+  target_link_libraries(native_drive_test PRIVATE bpmnos_wasm ${BPMNOS_ENGINE_LINK})
+
+  add_executable(native_message_test test/native/message_test.cpp)
+  target_link_libraries(native_message_test PRIVATE bpmnos_wasm ${BPMNOS_ENGINE_LINK})
 endif()
