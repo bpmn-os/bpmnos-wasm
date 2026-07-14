@@ -12,10 +12,11 @@ the opaque handle registry. The engine class owns the execution engine and drive
 four decision kinds, entry, exit, choice, and message delivery, are implemented, and two native tests
 drive real fixtures and pass with no sanitizer finding.
 
-The WebAssembly build is in progress on the `feature/wasm-build` branch and is not yet on the
-integration branch. The bridge sources compile under Emscripten without change; the remaining work is
-confined to the engine's dependencies and to cross compiling xerces and bpmn++. That branch carries a
-note recording the precise state and the plan.
+The WebAssembly build works. Under the Emscripten toolchain the same CMake fetches xerces, bpmn++,
+and the engine from source into the build tree, cross compiles them there, and links the bridge and
+its embind bindings into `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`. The Node tests under
+`test/wasm` drive the same fixtures as the native tests and pass. See `docs/wasm-build.md` for the
+build, the single patch it applies to a fetched dependency, and the UTF-8 locale it selects.
 
 Read `ROADMAP.md` for the milestone plan, the verified model of how the engine executes, and the
 reasoning behind the design. Read `README.md` for the account of the architecture and the driving

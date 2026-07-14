@@ -88,12 +88,22 @@ linked the same way, and the test passes with no sanitizer finding of any kind.
 
 ## The WebAssembly build
 
-The bridge sources themselves compile under Emscripten without change. The obstacles to a complete
-WebAssembly build are confined to the engine's dependencies, where Emscripten's standard library
-differs from the one the native build uses, and to the cross compilation of xerces and bpmn++. The
-JavaScript bindings and the Emscripten path in the build are written and ready. This work proceeds
-on its own branch, which carries a note recording the precise state and the plan for finishing it,
-and it is kept separate from the integration branch until it produces a built module.
+The WebAssembly build is a self contained superbuild. Under the Emscripten toolchain the same CMake
+fetches xerces, bpmn++, and the engine from source into the build tree, cross compiles them there,
+and links the bridge and its embind bindings into a module.
+
+```
+emcmake cmake -S . -B build-wasm
+cmake --build build-wasm
+node test/wasm/drive_test.mjs
+```
+
+This produces `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`, and the Node tests under
+`test/wasm` load the module and drive the same fixtures as the native tests, confirming that the
+engine executes inside WebAssembly. The module exposes the engine, the controller, and the monitor
+through embind, and every value that the C++ side expresses as JSON crosses the boundary as a JSON
+string. The details of the build, the single portable patch it applies to a fetched dependency, and
+the reason it selects a UTF-8 locale are recorded in `docs/wasm-build.md`.
 
 ## Relationship to the engine
 
