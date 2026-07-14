@@ -14,19 +14,14 @@ if(CCACHE_PROGRAM)
 endif()
 
 # Repositories the build fetches from. Everything is fetched into this project's build tree;
-# nothing outside the repository is referenced. Any fix required in a fetched dependency is
-# applied to its copy under the build tree as a patch step, never in an external checkout, so
-# those patches are exactly what is transferred upstream later.
+# nothing outside the repository is referenced. The engine now cross compiles unchanged, so no
+# patch is applied to any fetched source.
 set(BPMNOS_ENGINE_REPO "https://github.com/bpmn-os/bpmnos-engine.git" CACHE STRING "engine repository")
 set(BPMNOS_ENGINE_TAG  "main" CACHE STRING "engine tag")
 set(BPMNPP_REPO  "https://github.com/bpmn-os/bpmnpp.git" CACHE STRING "bpmn++ repository")
 set(BPMNPP_TAG   "main" CACHE STRING "bpmn++ tag")
 set(XERCES_REPO  "https://github.com/apache/xerces-c.git" CACHE STRING "xerces-c repository")
 set(XERCES_TAG   "v3.2.4" CACHE STRING "xerces-c tag")
-set(CNL_REPO     "https://github.com/johnmcfarlane/cnl.git" CACHE STRING "cnl repository")
-set(CNL_TAG      "v1.1.2" CACHE STRING "cnl tag")
-set(STRUTIL_REPO "https://github.com/Shot511/strutil.git" CACHE STRING "strutil repository")
-set(STRUTIL_TAG  "v1.1.0" CACHE STRING "strutil tag")
 
 # The bridge library. Its sources are toolchain independent; the include paths and the way the
 # engine is obtained differ between the native build and the WebAssembly build below.
@@ -73,30 +68,20 @@ if(NOT EMSCRIPTEN)
 else()
   # ------------------------------------------------------------------------------------------
   # WebAssembly build. xerces, bpmn++, and the engine are each fetched from source and cross
-  # compiled here; the engine's own build is not modified. xerces and bpmn++ install into a
-  # staging prefix in the build tree so the engine finds them exactly as it finds installed
-  # libraries. One portable fix is applied to a fetched copy: the cnl ostream streams a number
-  # through iterators that are raw pointers under libstdc++ but wrappers under libc++. Exceptions
-  # use the native WebAssembly form so a throw from the engine is caught at the boundary rather
-  # than trapping. Warnings are muted for the dependency compiles because the engine is already
-  # validated under its strict flags natively.
+  # compiled here; nothing is patched, because the fixes that a cross compile once needed are now
+  # upstream in the engine. xerces and bpmn++ install into a staging prefix in the build tree so
+  # the engine finds them exactly as it finds installed libraries. Exceptions use the native
+  # WebAssembly form so a throw from the engine is caught at the boundary rather than trapping.
   # ------------------------------------------------------------------------------------------
-  include(FetchContent)
   include(ExternalProject)
-  set(FETCHCONTENT_QUIET FALSE)
 
   set(STAGE ${CMAKE_BINARY_DIR}/stage)
   set(ENGINE_SRC ${CMAKE_BINARY_DIR}/_deps/bpmnos-src)
   set(EP_TOOLCHAIN -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+  # The engine supports the clang compiler that Emscripten uses, so it compiles with its own
+  # warnings on. bpmn++ does not, so its compile mutes warnings.
+  set(WASM_ENGINE_FLAGS "-fwasm-exceptions")
   set(WASM_DEP_FLAGS "-fwasm-exceptions -w")
-
-  # Patched cnl, populated (not built) and shared with the engine below in place of its own.
-  FetchContent_Declare(cnl
-    GIT_REPOSITORY ${CNL_REPO} GIT_TAG ${CNL_TAG}
-    SOURCE_SUBDIR this-directory-does-not-exist
-    PATCH_COMMAND sed -i "s@std::begin(line), std::end(line)@line.data(), line.data() + line.size()@g" include/cnl/_impl/ostream.h
-  )
-  FetchContent_MakeAvailable(cnl)
 
   # xerces-c cross compiled and installed into the staging prefix.
   ExternalProject_Add(ep_xerces
@@ -126,8 +111,7 @@ else()
     BUILD_BYPRODUCTS ${STAGE}/lib/libbpmn++.a
   )
 
-  # The engine, fetched into _deps, with the patched cnl injected in place of its own. Only the
-  # two libraries are built.
+  # The engine, fetched into _deps and cross compiled unchanged. Only the two libraries are built.
   ExternalProject_Add(ep_engine
     GIT_REPOSITORY ${BPMNOS_ENGINE_REPO} GIT_TAG ${BPMNOS_ENGINE_TAG}
     SOURCE_DIR ${ENGINE_SRC}
@@ -139,8 +123,7 @@ else()
       -DCMAKE_FIND_ROOT_PATH=${STAGE}
       -DXERCES_LIB=${STAGE}/lib/libxerces-c.a
       -DBPMNPP_LIB=${STAGE}/lib/libbpmn++.a
-      "-DCMAKE_CXX_FLAGS=-isystem ${STAGE}/include ${WASM_DEP_FLAGS}"
-      -DFETCHCONTENT_SOURCE_DIR_CNL=${cnl_SOURCE_DIR}
+      "-DCMAKE_CXX_FLAGS=-isystem ${STAGE}/include ${WASM_ENGINE_FLAGS}"
     BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target model_header execution_header bpmnos-model bpmnos-execution
     INSTALL_COMMAND ""
     BUILD_BYPRODUCTS ${ENGINE_SRC}/lib/libbpmnos-model.a ${ENGINE_SRC}/lib/libbpmnos-execution.a
@@ -151,7 +134,7 @@ else()
   target_compile_options(bpmnos_wasm PUBLIC -fwasm-exceptions)
   target_include_directories(bpmnos_wasm SYSTEM PUBLIC
     ${ENGINE_SRC}/lib
-    ${cnl_SOURCE_DIR}/include
+    ${BINARY_DIR}/_deps/cnl-src/include
     ${BINARY_DIR}/_deps/limex-src
     ${BINARY_DIR}/_deps/json-src
     ${STAGE}/include

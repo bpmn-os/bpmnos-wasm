@@ -102,8 +102,8 @@ This produces `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`, and the Node 
 `test/wasm` load the module and drive the same fixtures as the native tests, confirming that the
 engine executes inside WebAssembly. The module exposes the engine, the controller, and the monitor
 through embind, and every value that the C++ side expresses as JSON crosses the boundary as a JSON
-string. The details of the build, the single portable patch it applies to a fetched dependency, and
-the reason it selects a UTF-8 locale are recorded in `docs/wasm-build.md`.
+string. The engine cross compiles from its upstream source with no patch. The details of the build
+and the reason it selects a UTF-8 locale are recorded in `docs/wasm-build.md`.
 
 ## Relationship to the engine
 

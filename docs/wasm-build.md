@@ -23,22 +23,18 @@ the build tree and its two libraries are cross compiled against the staged depen
 bridge and the embind bindings are compiled and linked against those libraries into the module.
 
 Exceptions are compiled in the native WebAssembly form, so a throw from the engine is caught at the
-boundary and returned as an error rather than trapping the module. Warnings are muted for the
-dependency and engine compiles, because the engine is already validated under its own strict
-warning flags in the native build, and the strictness only obstructs a cross compiler that reports
-different warnings.
+boundary and returned as an error rather than trapping the module. The engine compiles with its own
+strict warnings on, because it supports the clang compiler that Emscripten uses. bpmn++ does not, so
+its compile alone mutes warnings.
 
-## The one patch
+## No patches
 
-A single portable fix is applied to a fetched dependency, as a patch step in the build tree rather
-than in any external checkout. The cnl fixed point library streams a number by passing the begin and
-end iterators of a local character array to an internal routine that expects raw character pointers.
-Under the standard library used by the native build those iterators are raw pointers, so it compiles;
-under the standard library that Emscripten uses they are wrapper types, so it does not. The patch
-passes the array's data pointer and that pointer advanced by the array's size instead. Two earlier
-fixes, a clock mismatch in the Metronome dispatcher and a parallel sort in a string utility that the
-same Emscripten standard library does not provide, are no longer needed here because they have been
-resolved upstream in the engine.
+No patch is applied to any fetched source. The engine cross compiles from its upstream source
+unchanged. Three fixes that a cross compile once needed have all been made upstream: a clock mismatch
+in the Metronome dispatcher, a parallel sort in a string utility that the Emscripten standard library
+does not provide, and, most recently, a narrowing of the cnl include so that the engine no longer
+pulls in a cnl header whose integer streaming does not compile under that standard library. Because
+the engine now needs no change, the build tracks upstream and reproduces from nothing.
 
 ## The locale
 
