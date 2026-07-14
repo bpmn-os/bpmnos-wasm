@@ -10,6 +10,7 @@
 
 #ifdef __EMSCRIPTEN__
 
+#include <clocale>
 #include <string>
 
 #include <emscripten/bind.h>
@@ -57,6 +58,15 @@ std::string monitorDrainLog(Monitor& monitor) {
 }
 
 } // namespace
+
+// The module is a library of embind classes rather than a program, but Emscripten still
+// expects an entry point. It runs once when the module instantiates and selects a UTF-8
+// locale, so that xerces transcodes model attributes that contain multi-byte characters,
+// such as the set membership sign in a choice condition, rather than dropping them.
+int main() {
+  std::setlocale(LC_ALL, "C.UTF-8");
+  return 0;
+}
 
 EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
   class_<Monitor>("Monitor")

@@ -1,62 +1,57 @@
 # The WebAssembly build
 
-This note records what is required to compile the bridge and the engine it depends on to
-WebAssembly, and what currently stands in the way. It reflects an investigation carried out
-with Emscripten 6.0.3 against the engine's amalgamated headers. The findings are factual and
-the plan follows from them.
+The WebAssembly build is a self contained superbuild driven entirely by this repository's CMake
+under the Emscripten toolchain. It fetches xerces, bpmn++, and the engine from their source
+repositories into this project's build tree and cross compiles them there. Nothing outside the
+repository is referenced, so the module is reproduced from nothing by a single build.
 
-## What already holds
+## How it is built
 
-The bridge sources themselves are compatible with Emscripten. Compiling a bridge translation
-unit with `em++` and the C++23 standard produces no error that originates in the bridge. Every
-error observed originates in a third party header that the engine's amalgamated headers include,
-where Emscripten's `libc++` differs from the `libstdc++` used by the native build. This means the
-boundary code, the handle registry, the monitor, and the controller need no change to target the
-web; the work is confined to the dependencies and the link.
+Configure and build with the Emscripten toolchain.
 
-## What stands in the way
+```
+emcmake cmake -S . -B build-wasm
+cmake --build build-wasm
+```
 
-There are two source level incompatibilities in header only dependencies and two libraries that
-must be cross compiled.
+This produces `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`.
 
-The `cnl` fixed point library streams a number by calling its internal `to_chars_natural` with the
-begin and end iterators of a local `std::array` of characters. Under `libstdc++` the iterator of a
-`std::array` is a raw character pointer, which is exactly what `to_chars_natural` accepts, so the
-native build compiles. Under `libc++` the same iterator is a wrapper type rather than a raw
-pointer, and no conversion exists, so the call fails to resolve. The fix is to pass raw pointers,
-for example the array's data pointer and that pointer advanced by the array's size, in the fetched
-copy of `cnl`.
+xerces and bpmn++ are each cross compiled and installed into a staging prefix inside the build
+tree, so that the engine discovers them exactly as it discovers installed libraries, through its
+own find_library calls, without any change to the engine's build. The engine is then fetched into
+the build tree and its two libraries are cross compiled against the staged dependencies. Finally the
+bridge and the embind bindings are compiled and linked against those libraries into the module.
 
-The `strutil` string utility sorts with the parallel execution policy `std::execution::par_unseq`.
-The `libc++` shipped with Emscripten does not implement the parallel algorithms, so the policy is
-undefined. The fix is to drop the execution policy argument in the fetched copy of `strutil`, which
-leaves an ordinary sequential sort.
+Exceptions are compiled in the native WebAssembly form, so a throw from the engine is caught at the
+boundary and returned as an error rather than trapping the module. Warnings are muted for the
+dependency and engine compiles, because the engine is already validated under its own strict
+warning flags in the native build, and the strictness only obstructs a cross compiler that reports
+different warnings.
 
-Xerces C++ and bpmn++ must be built for WebAssembly. The bridge reaches xerces only indirectly,
-because `bpmn++.h` includes `<xercesc/dom/DOM.hpp>`, so the xerces headers are needed to compile
-and the xerces library is needed to link. Xerces is the larger of the two efforts, since it carries
-platform specific facilities for file access, transcoding, and threading that must either build
-under Emscripten or be configured out. The bpmn++ library is small and depends only on xerces, so it
-follows once xerces is in place.
+## The one patch
 
-The schematic++ code generator does not need to be ported. It is a build time tool that reads the
-BPMNOS schema and emits parser sources, and it runs on the host. Only the sources it emits are
-compiled for WebAssembly, and those compile like any other engine source.
+A single portable fix is applied to a fetched dependency, as a patch step in the build tree rather
+than in any external checkout. The cnl fixed point library streams a number by passing the begin and
+end iterators of a local character array to an internal routine that expects raw character pointers.
+Under the standard library used by the native build those iterators are raw pointers, so it compiles;
+under the standard library that Emscripten uses they are wrapper types, so it does not. The patch
+passes the array's data pointer and that pointer advanced by the array's size instead. Two earlier
+fixes, a clock mismatch in the Metronome dispatcher and a parallel sort in a string utility that the
+same Emscripten standard library does not provide, are no longer needed here because they have been
+resolved upstream in the engine.
 
-## The plan
+## The locale
 
-The WebAssembly build fetches and patches its own copies of the header only dependencies rather than
-reusing the engine's, so the native engine build is left untouched. It cross compiles xerces and
-then bpmn++, keeps schematic++ as a native tool, builds the engine's model and execution libraries
-for WebAssembly with the patched dependencies, and links the bridge together with the embind
-bindings. Exceptions are compiled in native WebAssembly form with the same flag across every object,
-so a throw from the engine crosses the boundary as a caught error rather than a trap. Inputs reach
-the engine through the in memory file system, exactly as the native build writes them to a temporary
-directory, so no engine code that reads a model or a data file needs to change.
+The module selects a UTF-8 locale when it instantiates. Model attributes may contain multi byte
+characters, for instance the set membership sign in a choice condition, and xerces transcodes such
+an attribute to bytes through the runtime locale. Without a UTF-8 locale that transcoding drops the
+whole value, which the engine then reports as a choice with neither an enumeration nor bounds.
+Selecting a UTF-8 locale makes the transcoding preserve the characters.
 
-## State
+## The interface
 
-The embind bindings and the Emscripten path in the build description are written and ready. The two
-dependency patches and the xerces and bpmn++ cross compilation remain, and until they are done the
-link cannot complete. This branch therefore holds the WebAssembly scaffolding but not yet a built
-module, and it is deliberately kept separate from the integration branch until it produces one.
+The module exposes the three bridge classes, the engine, the controller, and the monitor, through
+embind. Every value that the C++ side expresses as JSON crosses the boundary as a JSON string, so
+the caller constructs the objects, attaches the monitor and the controller to the engine, and drives
+execution by passing and receiving JSON text. The Node tests under `test/wasm` load the module and
+drive the same fixtures as the native tests, confirming that the engine executes inside WebAssembly.
