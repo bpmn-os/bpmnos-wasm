@@ -57,3 +57,26 @@ if(NOT EMSCRIPTEN)
     pthread
   )
 endif()
+
+# WebAssembly module. Built only under the Emscripten toolchain. This path is scaffolding: it
+# requires the engine and its dependencies cross-compiled to wasm, which is not yet in place;
+# see docs/wasm-build.md for the remaining dependency work. Exceptions use the native
+# WebAssembly form so an engine throw is caught at the boundary rather than trapping.
+if(EMSCRIPTEN)
+  target_compile_options(bpmnos_wasm PUBLIC -fwasm-exceptions)
+  target_link_options(bpmnos_wasm PUBLIC -fwasm-exceptions)
+
+  # The wasm-compiled engine, bpmn++, and xerces archives, produced by the dependency build.
+  # Empty until that build exists; the module cannot link without them.
+  set(BPMNOS_WASM_ENGINE_LIBS "" CACHE STRING "wasm-compiled engine and dependency archives")
+
+  add_executable(bpmnos_module src/Bindings.cpp)
+  target_link_libraries(bpmnos_module PRIVATE bpmnos_wasm ${BPMNOS_WASM_ENGINE_LIBS})
+  target_link_options(bpmnos_module PRIVATE
+    -lembind
+    -sMODULARIZE=1
+    -sEXPORT_ES6=1
+    -sALLOW_MEMORY_GROWTH=1
+  )
+  set_target_properties(bpmnos_module PROPERTIES OUTPUT_NAME "bpmnos" SUFFIX ".js")
+endif()
