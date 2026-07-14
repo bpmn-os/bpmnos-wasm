@@ -14,9 +14,10 @@ drive real fixtures and pass with no sanitizer finding.
 
 The WebAssembly build works. Under the Emscripten toolchain the same CMake fetches xerces, bpmn++,
 and the engine from source into the build tree, cross compiles them there, and links the bridge and
-its embind bindings into `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`. The Node tests under
-`test/wasm` drive the same fixtures as the native tests and pass. See `docs/wasm-build.md` for the
-build, the single patch it applies to a fetched dependency, and the UTF-8 locale it selects.
+its embind bindings into `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`. The engine cross
+compiles from its upstream source with no patch. The Node tests under `test/wasm` drive the same
+fixtures as the native tests and pass. See `docs/wasm-build.md` for the build and the UTF-8 locale
+it selects.
 
 Read `ROADMAP.md` for the milestone plan, the verified model of how the engine executes, and the
 reasoning behind the design. Read `README.md` for the account of the architecture and the driving
