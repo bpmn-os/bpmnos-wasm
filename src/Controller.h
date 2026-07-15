@@ -1,11 +1,10 @@
 #ifndef BPMNOS_WASM_CONTROLLER_H
 #define BPMNOS_WASM_CONTROLLER_H
 
-#include <cstdint>
 #include <deque>
-#include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -17,73 +16,59 @@ namespace BPMNOS::WASM {
 
 using json = nlohmann::ordered_json;
 
-/// The input side of the boundary.
+/// The input side of the boundary: an interactive controller.
 ///
-/// The controller is an event dispatcher through which the caller supplies the decisions
-/// the engine is waiting for. When connected to an engine, its dispatchEvent is polled by
-/// the engine's fetch loop and returns the next queued decision, or a null pointer when
-/// nothing is queued, in which case the engine advances no further and returns to the
-/// caller. It owns the registry that maps an opaque request identifier, the only reference
-/// the caller ever holds, to a weak pointer into engine state, and it revalidates that
-/// identifier both when a decision is submitted and again when it is dispatched, so a
-/// decision for a withdrawn token can never take effect. It owns no engine; it is connected
-/// to one.
+/// Deriving from the engine's controller, it owns the unambiguous auto dispatchers, the feasible exit,
+/// the feasible non sequential entry, and the directly addressed message delivery, each evaluated by a
+/// guided evaluator, and resolves those without the caller. Everything contested, a choice, the entry of
+/// a child of a sequential ad hoc subprocess, and an ambiguous message delivery, it surfaces to the caller
+/// through pendingDecisions and applies from submitDecision. The caller advances simulated time with
+/// submitClockTick and ends execution with submitTermination. No time handler is attached, so the engine
+/// stops once neither an auto dispatcher nor a submitted input yields an event, at which point the pending
+/// decisions are exactly those left for the caller.
 ///
-/// The four decision kinds are named "entry", "exit", "choice", and "messageDelivery". A
-/// submitted decision is a JSON object of the form
-///   {"requestId": n, "type": "entry|exit|choice|messageDelivery",
-///    "status": [ ... ]?, "choices": [ ... ]?, "messageId": m?}
-/// where status overrides the token status on entry or exit and is otherwise omitted, choices
-/// supplies one value per choice of a decision task, and messageId names one of the candidate
-/// messages the corresponding pending decision offered. A message delivery pending decision
-/// carries, under "candidates", the messages that may be delivered to the waiting token, each
-/// with its own identifier and its serialised content.
-class Controller : public Execution::EventDispatcher {
+/// A decision is identified by the natural identity of its token, its instance and its node, and a message
+/// by its origin and its sender. A submission carries only that identity and is validated by looking it up
+/// in the live system state when it is dispatched, so a decision for a token that has since been withdrawn
+/// finds no match and is silently dropped rather than acting on stale state.
+class Controller : public Execution::Controller {
 public:
   Controller();
   ~Controller() override;
 
-  /// Returns the next queued decision to the engine, or a null pointer when none is ready.
-  /// A queued decision whose handle has expired since submission is discarded here.
+  /// Connects the auto dispatchers to this controller, then the controller to the engine.
+  void connect(Execution::Mediator* mediator) override;
+
+  /// Returns the next event to the engine: an auto resolved decision while one is feasible, then a
+  /// caller supplied decision, clock tick, or termination, and a null pointer when none remains.
   std::shared_ptr<Execution::Event> dispatchEvent(const Execution::SystemState* systemState) override;
 
-  /// Enumerates the decisions the given system state is currently waiting for, assigning a
-  /// stable opaque identifier to each and reusing it across calls. Each entry carries the
-  /// identifier, the decision type, and the serialised token; choice entries additionally
-  /// carry, for every choice of the decision task, either the allowed enumeration or the
-  /// lower and upper bounds, depending on how the choice is defined.
+  /// Enumerates the decisions the caller must resolve, each carrying its kind and its token's instance
+  /// and node. A choice additionally carries, for every choice of the decision task, either the allowed
+  /// enumeration or the lower and upper bounds. A message delivery carries its candidate messages, each
+  /// with its origin and sender.
   json pendingDecisions(const Execution::SystemState* systemState);
 
-  /// Accepts a decision from the caller. Revalidates the identifier against live state and,
-  /// on success, queues the decision for the next advance. Returns {"queued": id} or
-  /// {"rejected": reason, "requestId": id}.
+  /// Accepts a decision from the caller and queues it for the next advance. The decision is
+  /// {"type": "entry|exit|choice|messageDelivery", "instanceId": s, "nodeId": s, "status": [ ... ]?,
+  /// "choices": [ ... ]?, "origin": s?, "sender": s?}. Returns {"queued": true} or {"rejected": reason}.
   json submitDecision(const json& decision);
+
+  /// Queues a clock tick that advances simulated time by one unit at the next advance.
+  json submitClockTick();
 
   /// Queues a termination event that ends execution at the next advance.
   json submitTermination();
 
 private:
-  struct Handle {
-    std::weak_ptr<Execution::Token> token;
-    std::weak_ptr<Execution::DecisionRequest> request;
-    const Execution::DecisionRequest* requestPtr = nullptr;
-    std::string type;
-  };
+  /// Builds the engine event for a queued input, locating the token by its identity in the live state.
+  /// Returns a null pointer and sets error when no matching pending decision or message is found.
+  std::shared_ptr<Execution::Event> makeUserEvent(
+    const json& decision, const Execution::SystemState* systemState, std::string& error);
 
-  /// Constructs the engine event for a queued decision, revalidating and then consuming its
-  /// handle. Returns a null pointer and sets error when the handle is no longer valid.
-  std::shared_ptr<Execution::Event> makeEvent(const json& decision, std::string& error);
-
-  /// Enumerates the pool messages that may be delivered to the given waiting token, assigning
-  /// and reusing a stable identifier for each. Returns a json array of {"messageId", "message"}.
-  json messageCandidates(Execution::Token* token, const Execution::SystemState* systemState);
-
-  std::map<std::uint64_t, Handle> handles;                                ///< identifier to decision handle
-  std::map<const Execution::DecisionRequest*, std::uint64_t> idByRequest; ///< stable decision identifier reuse
-  std::map<std::uint64_t, std::weak_ptr<Execution::Message>> messageHandles;   ///< identifier to message handle
-  std::map<const Execution::Message*, std::uint64_t> idByMessage;              ///< stable message identifier reuse
-  std::deque<json> queue;                                                 ///< decisions awaiting dispatch
-  std::uint64_t nextId = 1;
+  std::unique_ptr<Execution::Evaluator> evaluator;                         ///< guides the auto dispatchers
+  std::vector<std::unique_ptr<Execution::EventDispatcher>> autoDispatchers; ///< tried before the caller queue
+  std::deque<json> queue;                                                  ///< caller inputs awaiting dispatch
 };
 
 } // namespace BPMNOS::WASM

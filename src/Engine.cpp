@@ -118,19 +118,22 @@ void Engine::build() {
   if (monitor) {
     monitor->subscribe(engine.get());
   }
+  // The outcome sentinel observes how execution ends on either path, so a snapshot can report it.
+  outcomeSentinel = std::make_unique<Execution::OutcomeSentinel>();
+  outcomeSentinel->subscribe(engine.get());
   if (controller) {
-    // A caller-supplied controller drives the decisions.
+    // A caller-supplied controller drives the contested decisions and the clock. It auto-resolves the
+    // unambiguous decisions itself, and no time handler is attached, so time advances only by a clock
+    // tick the caller supplies.
     controller->connect(engine.get());
   }
   else {
-    // No controller: run autonomously, mirroring the engine's greedy application.
+    // No controller: run autonomously, replicating the engine's greedy application.
     evaluator = std::make_unique<Execution::GuidedEvaluator>();
     greedyController = std::make_unique<Execution::GreedyController>(evaluator.get());
     greedyController->connect(engine.get());
     timeWarp = std::make_unique<Execution::TimeWarp>();
     timeWarp->connect(engine.get());
-    outcomeSentinel = std::make_unique<Execution::OutcomeSentinel>();
-    outcomeSentinel->subscribe(engine.get());
   }
   built = true;
 }

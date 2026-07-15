@@ -53,17 +53,15 @@ if(NOT EMSCRIPTEN)
   )
   add_dependencies(bpmnos_wasm model_header execution_header)
 
-  add_executable(native_drive_test test/native/drive_test.cpp)
-  target_link_libraries(native_drive_test PRIVATE
-    bpmnos_wasm bpmnos-execution bpmnos-model bpmn++ xerces-c pthread)
-
-  add_executable(native_message_test test/native/message_test.cpp)
-  target_link_libraries(native_message_test PRIVATE
-    bpmnos_wasm bpmnos-execution bpmnos-model bpmn++ xerces-c pthread)
-
   enable_testing()
-  add_test(NAME drive COMMAND native_drive_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
-  add_test(NAME message COMMAND native_message_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
+  # Each native test drives a fixture through the bridge and takes the fixture directory as its
+  # one argument, so a test does not depend on the working directory.
+  foreach(scenario IN ITEMS timer choice sequential_entry message)
+    add_executable(native_${scenario}_test test/native/${scenario}_test.cpp)
+    target_link_libraries(native_${scenario}_test PRIVATE
+      bpmnos_wasm bpmnos-execution bpmnos-model bpmn++ xerces-c pthread)
+    add_test(NAME ${scenario} COMMAND native_${scenario}_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
+  endforeach()
 
 else()
   # ------------------------------------------------------------------------------------------

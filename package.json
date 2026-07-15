@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "emcmake cmake -S . -B build-wasm && cmake --build build-wasm --target bpmnos_module",
-    "test:wasm": "node test/wasm/drive_test.mjs && node test/wasm/message_test.mjs && node test/wasm/greedy_test.mjs && node test/wasm/observe_test.mjs"
+    "test:wasm": "node test/wasm/timer_test.mjs && node test/wasm/choice_test.mjs && node test/wasm/sequential_entry_test.mjs && node test/wasm/message_test.mjs && node test/wasm/greedy_test.mjs && node test/wasm/observe_test.mjs"
   },
   "repository": {
     "type": "git",

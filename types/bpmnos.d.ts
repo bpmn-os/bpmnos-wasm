@@ -44,9 +44,18 @@ export interface Monitor {
 }
 
 export interface Controller {
-  /** Submit a decision. Returns {"queued":id} or {"rejected":reason}. */
+  /**
+   * Submit a decision the caller must resolve, identified by its token's instance and node. The
+   * decision is {"type":"entry|exit|choice|messageDelivery","instanceId":s,"nodeId":s,
+   * "status":[...]?,"choices":[...]?,"origin":s?,"sender":s?}, where a choice carries one value per
+   * choice of the decision task and a message delivery names the chosen message by its origin and
+   * sender. Returns {"queued":true} or {"rejected":reason}. The engine auto-resolves the unambiguous
+   * entries, exits, and directly addressed message deliveries itself, so those are not submitted.
+   */
   submitDecision(decisionJson: string): string;
-  /** Queue a termination event. */
+  /** Queue a clock tick that advances simulated time by one unit at the next resume. */
+  submitClockTick(): string;
+  /** Queue a termination event that ends execution at the next resume. */
   submitTermination(): string;
   delete(): void;
 }

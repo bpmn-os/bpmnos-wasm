@@ -7,10 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The interactive bridge exists and is tested. The repository compiles the C++ BPMNOS execution engine
 and exposes a JavaScript facing interface that drives it. Three classes in the namespace
 `BPMNOS::WASM` make up the bridge. The monitor is a passive observer that records the token, event,
-and message log. The controller is an event dispatcher that supplies the caller's decisions and owns
-the opaque handle registry. The engine class owns the execution engine and drives its lifecycle. All
-four decision kinds, entry, exit, choice, and message delivery, are implemented, and two native tests
-drive real fixtures and pass with no sanitizer finding.
+and message log. The controller is an interactive controller that auto resolves the unambiguous
+decisions and supplies the caller's decisions for the contested ones. The engine class owns the
+execution engine and drives its lifecycle. All four decision kinds, entry, exit, choice, and message
+delivery, together with the clock tick, are covered by native and WebAssembly tests that drive real
+fixtures and pass with no sanitizer finding.
 
 The monitor keeps a log that only grows and returns fresh entries through `drainLog`, and it also
 accepts a live callback through `onNotice` that it invokes with each entry, serialised as a JSON
@@ -32,6 +33,19 @@ the page as it arrives, and reports both the engine's run time and the time unti
 complete. The workbench will consume the stream the same way, and because it paces playback to the
 animation of token movement, the cost of serialising the log stays hidden behind the wait for
 movement.
+
+Without a caller supplied controller the engine runs autonomously, replicating the engine's greedy
+application. With one attached the controller is interactive. It owns the unambiguous half of the
+greedy controller, the first feasible exit, the first feasible non sequential entry, and the directly
+addressed message delivery, each guided by a guided evaluator, and resolves those without the caller.
+It leaves the contested half to the caller: a choice, the entry of a child of a sequential ad hoc
+subprocess, and an ambiguous message delivery, each surfaced through the snapshot's pending decisions.
+No time handler is attached, so the engine processes what it can and then stops, and the caller
+advances it by submitting a decision, a clock tick, or a termination and resuming. A submitted decision
+names its token by instance and node, and a message by its origin and its sender from the header, and
+it is validated against the live system state when it is dispatched, so a decision for a token that has
+since been withdrawn finds no match and is dropped. The message content plays no part in this identity;
+the engine derives it from status and data during delivery.
 
 The WebAssembly build works. Under the Emscripten toolchain the same CMake fetches xerces, bpmn++,
 and the engine from source into the build tree, cross compiles them there, and links the bridge and
@@ -81,8 +95,11 @@ expired entries only while they are traversed, so the bridge treats its own weak
 membership in a list, as the test of liveness, and it never holds a strong reference that would keep
 an engine object alive.
 
-Advancing simulated time by a clock tick is not yet implemented. Whether the engine class injects it
-or the controller dispatches it is an open question left for a session that settles it together.
+Advancing simulated time by a clock tick is done through the controller. The interactive controller
+attaches no time handler, so time does not advance on its own; the caller submits a clock tick, which
+the controller dispatches as a clock tick event at the next fetch, and each tick advances the current
+time by one. A model with a timer therefore reaches a terminal state once the caller has ticked the
+clock past the trigger, which the native and WebAssembly timer tests exercise.
 
 ## Branching
 

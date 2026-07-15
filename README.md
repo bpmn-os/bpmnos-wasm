@@ -45,30 +45,34 @@ loads the model and the data, and then drives.
 
 ## Driving an execution
 
-Execution proceeds by starting the engine and then repeatedly reading its state, submitting a
-decision, and resuming, until the engine has nothing further to do. Each advancing call returns a
-snapshot, which is a structured object carrying the current simulated time, the log entries
-recorded since the previous snapshot, the decisions the engine is currently waiting for, and
-whether the system is still considered alive.
+Attaching a controller makes execution interactive. The controller resolves the unambiguous decisions
+itself, the feasible exit, the feasible non sequential entry, and the directly addressed message
+delivery, and it stops the engine at everything it leaves to the caller. Execution then proceeds by
+starting the engine and repeatedly reading its state, submitting an input, and resuming, until the
+engine has nothing further to do. Each advancing call returns a snapshot carrying the current simulated
+time, the log entries recorded since the previous snapshot, the decisions the engine is waiting for,
+and whether the system is still considered alive.
 
-The decisions the engine waits for are the entry of a token into an activity, the exit of a token
-from an activity, the choice made at a decision task, and the delivery of a message. Each pending
-decision in a snapshot carries an identifier, its kind, and the token it concerns. A choice
-additionally carries, for every choice the decision task defines, either the enumeration of allowed
-values or the lower and upper bounds, depending on how the choice is written, so that the caller
-knows what it may submit. The caller submits a decision by naming the identifier and the kind and,
-for a choice, the values it selects.
+The decisions left to the caller are a choice at a decision task, the entry of a child of a sequential
+ad hoc subprocess, and a message delivery that is not explicitly addressed. Each pending decision in a
+snapshot carries its kind and the instance and node of the token it concerns. A choice additionally
+carries, for every choice the decision task defines, either the enumeration of allowed values or the
+lower and upper bounds, depending on how the choice is written. A message delivery carries its candidate
+messages, each identified by its origin and its sender from the message header. The caller submits a
+decision by naming that identity and, for a choice, the values it selects, or, for a delivery, the
+origin and sender of the message it chooses.
 
-Two rules make this safe against the concurrency the engine already manages internally. The caller
-never holds a pointer into the engine; it holds only an identifier, and every submission is
-revalidated against live state before it can act. The caller reads a snapshot only after an
-advancing call has returned, rather than being called back while the engine is running, so it
-always observes a consistent view and never re enters a running engine.
+The caller also advances simulated time and ends execution through the controller. No time handler is
+attached, so time does not advance on its own; the caller submits a clock tick, which advances the
+current time by one, and resumes, and it submits a termination to end execution. A model with a timer
+reaches a terminal state once the caller has ticked the clock past the trigger.
 
-Advancing simulated time by a clock tick is not yet part of the interface. Where that operation
-belongs, whether the engine class injects it or the controller dispatches it, is an open question,
-and the behaviour tested so far does not require it. It becomes necessary once a model carries
-timers or once execution must reach a formally terminal state, and it will be settled then.
+Two rules keep this safe against the concurrency the engine manages internally. The caller never holds
+a pointer into the engine; it holds only the natural identity of a token or a message, and every
+submission is validated against the live system state when it is dispatched, so a decision for a token
+that has since been withdrawn finds no match and is dropped. The caller reads a snapshot only after an
+advancing call has returned, rather than being called back while the engine is running, so it always
+observes a consistent view and never re enters a running engine.
 
 ## Building and testing
 
@@ -78,16 +82,17 @@ location may be given through the `BPMNOS_ENGINE_DIR` cache variable.
 
 ```
 cmake -S . -B build
-cmake --build build --target native_drive_test
-./build/native_drive_test test/fixtures
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-The native drive test exercises the decision task fixture through the run, stop, and resume model
-with no clock. It supplies the entry, the choice, and the exit, confirms that the choice
-enumeration is offered and that the submitted value is applied, and confirms that resubmitting a
-consumed identifier is rejected rather than crashing. Because the prebuilt engine libraries are
-compiled with the address, undefined, and leak sanitizers, the bridge and the test are built and
-linked the same way, and the test passes with no sanitizer finding of any kind.
+The native tests drive real fixtures through the interactive controller: the timer test advances the
+clock a tick at a time until a timer fires and the process terminates; the choice test makes the choice
+of a decision task whose entry and exit are resolved automatically; the sequential entry test enters the
+children of a sequential ad hoc subprocess one at a time; and the message test delivers an unaddressed
+message of the assignment problem by naming it by its origin and sender. Because the prebuilt engine
+libraries are compiled with the address, undefined, and leak sanitizers, the bridge and the tests are
+built and linked the same way, and they pass with no sanitizer finding of any kind.
 
 ## The WebAssembly build
 
@@ -98,7 +103,7 @@ and links the bridge and its embind bindings into a module.
 ```
 emcmake cmake -S . -B build-wasm
 cmake --build build-wasm
-node test/wasm/drive_test.mjs
+node test/wasm/timer_test.mjs
 ```
 
 This produces `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`, and the Node tests under
