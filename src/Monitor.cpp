@@ -19,20 +19,31 @@ void Monitor::subscribe(Execution::Engine* engine) {
   );
 }
 
+void Monitor::onNotice(std::function<void(const json&)> callback) {
+  sink = std::move(callback);
+}
+
 void Monitor::notice(const Execution::Observable* observable) {
   using Type = Execution::Observable::Type;
+  json entry;
   switch (observable->getObservableType()) {
     case Type::Token:
-      log.push_back(json{ {"token", static_cast<const Execution::Token*>(observable)->jsonify()} });
+      entry = json{ {"token", static_cast<const Execution::Token*>(observable)->jsonify()} };
       break;
     case Type::Event:
-      log.push_back(json{ {"event", static_cast<const Execution::Event*>(observable)->jsonify()} });
+      entry = json{ {"event", static_cast<const Execution::Event*>(observable)->jsonify()} };
       break;
     case Type::Message:
-      log.push_back(json{ {"message", static_cast<const Execution::Message*>(observable)->jsonify()} });
+      entry = json{ {"message", static_cast<const Execution::Message*>(observable)->jsonify()} };
       break;
     default:
-      break;
+      return;
+  }
+  log.push_back(entry);
+  // A registered sink observes the entry live, the moment it is recorded, before control returns
+  // to the engine. The append-only log is kept regardless, so draining still returns every entry.
+  if (sink) {
+    sink(entry);
   }
 }
 

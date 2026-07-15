@@ -53,7 +53,7 @@ jobs:
       - name: Assemble the site
         run: |
           mkdir -p site/samples
-          cp demo/index.html site/
+          cp demo/index.html demo/worker.mjs site/
           cp demo/samples/* site/samples/
           cp _dist/dist/bpmnos.mjs _dist/dist/bpmnos.wasm site/
 

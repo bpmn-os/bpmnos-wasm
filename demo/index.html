@@ -18,6 +18,7 @@
     #status { margin: 0.75rem 0; font-family: monospace; white-space: pre-wrap; }
     #log { flex: 1; min-height: 0; margin: 0; border: 1px solid gray; padding: 0.75rem;
            overflow: auto; font-family: monospace; font-size: 0.8rem; }
+    #log .entry { white-space: pre-wrap; word-break: break-word; padding: 0.05rem 0; }
     #log code.hljs { background: transparent; padding: 0; }
   </style>
   <link rel="stylesheet" media="(prefers-color-scheme: light)"
@@ -30,7 +31,8 @@
   <h1>BPMNOS greedy run</h1>
   <p>Choose a BPMN model and an instance CSV, then run. Execution is driven by the engine's greedy
      controller with the guided evaluator over the stochastic data provider, seeded afresh on each
-     run, so repeated runs may differ; the monitor's JSON log is printed below.</p>
+     run, so repeated runs may differ. The run happens in a worker, and each entry appears in the
+     log below the moment the monitor observes it.</p>
 
   <div class="controls">
     <label><span>BPMN model</span><input type="file" id="model" accept=".bpmn,.xml"></label>
@@ -39,33 +41,71 @@
   </div>
 
   <div id="status">loading module...</div>
-  <pre id="log"><code id="logCode" class="language-json"></code></pre>
+  <div id="log"></div>
 
   <script type="module">
-    import createBpmnos from './bpmnos.mjs';
-
     const $ = (id) => document.getElementById(id);
-    let Module = null;
 
-    createBpmnos().then((m) => {
-      Module = m;
-      $('run').disabled = false;
-      $('status').textContent = 'module loaded; choose files and run';
-    });
+    // The engine runs in a worker so the page stays responsive during the blocking run and can
+    // paint each entry as it arrives. The worker posts one message per observed notification.
+    const worker = new Worker(new URL('./worker.mjs', import.meta.url), { type: 'module' });
+
+    let count = 0;
+    let runStartedAt = 0;
+
+    function clearLog() {
+      $('log').replaceChildren();
+      count = 0;
+    }
+
+    // Append one observed entry, highlighted, and keep the view pinned to the tail unless the user
+    // has scrolled up to read.
+    function appendEntry(entryJson) {
+      const log = $('log');
+      const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+      const line = document.createElement('div');
+      line.className = 'entry';
+      const code = document.createElement('code');
+      code.className = 'language-json';
+      code.textContent = entryJson;
+      line.appendChild(code);
+      log.appendChild(line);
+      if (window.hljs) hljs.highlightElement(code);
+      count += 1;
+      if (atBottom) log.scrollTop = log.scrollHeight;
+    }
 
     function showError(message) {
       $('status').textContent = 'error: ' + message;
-      renderLog('');
+      $('run').disabled = false;
     }
 
-    // Render text into the log element, syntax highlighting non-empty JSON with highlight.js.
-    function renderLog(text) {
-      const code = $('logCode');
-      code.textContent = text;
-      code.className = 'language-json';
-      delete code.dataset.highlighted;
-      if (text && window.hljs) hljs.highlightElement(code);
-    }
+    worker.onmessage = (event) => {
+      const message = event.data;
+      if (message.type === 'ready') {
+        $('run').disabled = false;
+        $('status').textContent = 'module loaded; choose files and run';
+      } else if (message.type === 'entry') {
+        appendEntry(message.entry);
+      } else if (message.type === 'done') {
+        // The done message is processed after every entry message before it, so by now the last
+        // entry is painted; this duration is therefore the time until the display is complete.
+        const displayMs = performance.now() - runStartedAt;
+        $('status').textContent =
+          'outcome: ' + message.outcome +
+          '\nobjective: ' + message.objective +
+          '\nfinal time: ' + message.time +
+          '\nlog entries: ' + count +
+          '\nseed: ' + message.seed +
+          '\nengine time: ' + (message.engineMs / 1000).toFixed(1) + ' s' +
+          '\ntime to full display: ' + (displayMs / 1000).toFixed(1) + ' s';
+        $('run').disabled = false;
+      } else if (message.type === 'error') {
+        showError(message.error);
+      }
+    };
+
+    worker.onerror = (event) => showError(event.message || 'worker error');
 
     $('run').addEventListener('click', async () => {
       const modelFile = $('model').files[0];
@@ -74,41 +114,16 @@
         showError('choose both a BPMN model and an instance CSV');
         return;
       }
-      // Clear the previous run and let the browser paint the cleared state before the blocking run.
-      renderLog('');
+      runStartedAt = performance.now();
+      clearLog();
       $('status').textContent = 'running...';
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      $('run').disabled = true;
 
-      const modelXml = await modelFile.text();
-      const instanceCsv = await instanceFile.text();
-
-      // No controller is attached, so the engine runs autonomously under the greedy controller.
-      const engine = new Module.Engine();
-      const monitor = new Module.Monitor();
-      engine.attachMonitor(monitor);
-
-      let result = JSON.parse(engine.loadModel(modelXml));
-      if (result.error) return showError(result.error);
-      result = JSON.parse(engine.loadInstances(instanceCsv));
-      if (result.error) return showError(result.error);
-
+      const model = await modelFile.text();
+      const instances = await instanceFile.text();
       // The stochastic provider with a fresh random seed makes repeated runs differ.
       const seed = Math.floor(Math.random() * 0x100000000);
-      engine.configure(JSON.stringify({ provider: 'stochastic', seed }));
-
-      const startedAt = performance.now();
-      const snapshot = JSON.parse(engine.start());
-      const elapsedMs = performance.now() - startedAt;
-      if (snapshot.error) return showError(snapshot.error);
-
-      $('status').textContent =
-        'outcome: ' + snapshot.outcome +
-        '\nobjective: ' + snapshot.objective +
-        '\nfinal time: ' + snapshot.time +
-        '\nlog entries: ' + snapshot.log.length +
-        '\nseed: ' + seed +
-        '\nrun time: ' + elapsedMs.toFixed(1) + ' ms';
-      renderLog(JSON.stringify(snapshot.log, null, 2));
+      worker.postMessage({ model, instances, seed });
     });
   </script>
 </body>
