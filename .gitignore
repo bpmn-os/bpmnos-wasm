@@ -1,5 +1,8 @@
 /build/
 /build-wasm/
 /wasm/
+/dist/
 *.log
 node_modules/
+web/bpmnos.mjs
+web/bpmnos.wasm

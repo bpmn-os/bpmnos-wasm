@@ -1,0 +1,3 @@
+INSTANCE_ID; NODE_ID; INITIALIZATION
+Instance_1; Process_1; timestamp := 0
+Instance_2; Process_2; timestamp := 0

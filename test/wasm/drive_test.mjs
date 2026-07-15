@@ -4,14 +4,12 @@
 // requested and supplied, the submitted choice is applied, and a stale submission is rejected.
 
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import createBpmnos from '../../dist/bpmnos.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
-const require = createRequire(import.meta.url);
-const createBpmnos = require(join(root, 'build-wasm', 'bpmnos.js'));
 
 function check(condition, message) {
   if (!condition) {

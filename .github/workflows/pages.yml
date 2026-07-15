@@ -1,0 +1,58 @@
+name: Deploy demo to Pages
+
+# Builds the WebAssembly module and deploys the web demo to GitHub Pages. The build fetches xerces,
+# bpmn++, and the engine from source and cross compiles them, so a runner reproduces it from
+# nothing. Enable Pages in the repository settings with the source set to GitHub Actions.
+
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the WebAssembly module
+        run: |
+          emcmake cmake -S . -B build-wasm
+          cmake --build build-wasm --target bpmnos_module -j"$(nproc)"
+
+      - name: Assemble the site
+        run: |
+          mkdir -p site
+          cp -r web/index.html web/samples site/
+          cp dist/bpmnos.mjs dist/bpmnos.wasm site/
+
+      - name: Upload the site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

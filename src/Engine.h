@@ -8,13 +8,9 @@
 
 #include <nlohmann/json.hpp>
 
-// The heavy engine headers are kept out of this interface; only the source file includes
-// them. Forward declarations suffice because the owned engine objects are held through
-// unique pointers whose destructor is emitted in the source file.
-namespace BPMNOS {
-namespace Model { class DataProvider; class Scenario; }
-namespace Execution { class Engine; }
-} // namespace BPMNOS
+#include <bpmn++.h>
+#include <bpmnos-model.h>
+#include <bpmnos-execution.h>
 
 namespace BPMNOS::WASM {
 
@@ -26,13 +22,13 @@ using json = nlohmann::ordered_json;
 /// Owner of one execution engine and the driver of its lifecycle.
 ///
 /// This class holds the engine's execution engine together with the data provider and
-/// scenario built from the loaded model, lookup tables, and instance data. It connects a
-/// monitor, and, when the caller intends to supply decisions, a controller, both of which
-/// the caller constructs and owns. It exposes the loading calls and the advancing calls; a
-/// caller drives execution by starting the engine, then reading the snapshot, submitting a
-/// decision to the controller, and resuming, until execution is done. Advancing simulated
-/// time by a clock tick is deliberately not offered yet; where that operation belongs is an
-/// open question and the current controlled tests do not require it.
+/// scenario built from the loaded model, lookup tables, and instance data. It always connects a
+/// monitor. A controller is optional: when the caller attaches one, that caller supplies the
+/// decisions and drives execution by starting the engine, reading the snapshot, submitting a
+/// decision, and resuming until execution is done. When no controller is attached, the engine
+/// instead runs autonomously, mirroring the engine's own greedy application by connecting a
+/// greedy controller with the guided evaluator and the time-warp clock, so that starting the
+/// engine runs it to completion and the monitor's log is the whole run.
 ///
 /// A snapshot is a JSON object carrying the current simulated time, the log entries recorded
 /// since the previous snapshot, the currently pending decisions, whether the system is still
@@ -79,6 +75,13 @@ private:
   std::unique_ptr<Model::DataProvider> dataProvider;
   std::unique_ptr<Model::Scenario> scenario;
   std::unique_ptr<Execution::Engine> engine;
+  // Autonomous run wiring, used when no caller controller is attached: mirrors the engine's greedy
+  // application with the guided evaluator, the greedy controller, the time-warp clock, and an
+  // outcome sentinel. The evaluator is declared before the controller so it outlives it.
+  std::unique_ptr<Execution::Evaluator> evaluator;
+  std::unique_ptr<Execution::GreedyController> greedyController;
+  std::unique_ptr<Execution::TimeWarp> timeWarp;
+  std::unique_ptr<Execution::OutcomeSentinel> outcomeSentinel;
   Monitor* monitor = nullptr;         ///< not owned
   Controller* controller = nullptr;   ///< not owned
 };
