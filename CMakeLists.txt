@@ -143,7 +143,7 @@ else()
   add_dependencies(bpmnos_wasm ep_engine)
 
   # The WebAssembly module: the embind entry linked against the bridge and the staged libraries.
-  add_executable(bpmnos_module src/Bindings.cpp)
+  add_executable(bpmnos_module src/wasm/Bindings.cpp)
   add_dependencies(bpmnos_module ep_engine)
   target_link_libraries(bpmnos_module PRIVATE
     bpmnos_wasm
