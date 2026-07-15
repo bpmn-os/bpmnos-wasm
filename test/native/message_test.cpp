@@ -1,10 +1,12 @@
 // Native message delivery test for the interactive bridge.
 //
-// It drives the simple messaging fixture, in which one instance throws a message and another
-// waits to catch it, through the run, stop, and resume model with no clock. The driver supplies
-// whatever decision the engine is waiting for, and delivers a message only once a candidate for
-// it exists, which is the point of the test: the waiting token's pending decision must offer the
-// thrown message as a candidate, and delivering it must let both instances complete their events.
+// The assignment problem pairs a client that sends a request with a server that waits to receive one.
+// The message is not explicitly addressed, so its delivery is not resolved automatically but surfaced
+// to the caller as a message delivery decision. This drives one client and one server and checks that
+// the engine stops at the delivery, offering the waiting message identified by its origin and sender
+// from the header, that submitting that identity delivers the message, and that both the sending and
+// the receiving task then complete. The message content is derived by the engine from status and data
+// and plays no part in the identity the bridge uses.
 
 #include <cstdlib>
 #include <fstream>
@@ -38,23 +40,14 @@ static void check(bool condition, const std::string& message) {
   std::cerr << "ok: " << message << "\n";
 }
 
-static bool logHas(const json& fullLog, const std::string& key,
-                   const std::string& field, const std::string& value) {
-  for (const auto& entry : fullLog) {
-    if (entry.contains(key) && entry[key].value(field, std::string()) == value) {
-      return true;
-    }
-  }
-  return false;
-}
-
 int main(int argc, char** argv) {
   std::string fixtureDir = (argc > 1) ? argv[1] : "test/fixtures";
-  std::string modelXml = readFile(fixtureDir + "/Simple_messaging.bpmn");
+  std::string modelXml = readFile(fixtureDir + "/Assignment_problem.bpmn");
+  std::string costsCsv = readFile(fixtureDir + "/costs.csv");
   std::string instanceCsv =
     "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
-    "Instance_1; Process_1; timestamp := 0\n"
-    "Instance_2; Process_2; timestamp := 0\n";
+    "Client1; ClientProcess;\n"
+    "Server1; ServerProcess;\n";
 
   Engine engine;
   Monitor monitor;
@@ -63,72 +56,52 @@ int main(int argc, char** argv) {
   engine.attachController(&controller);
 
   check(!engine.loadModel(modelXml).contains("error"), "loadModel");
+  check(!engine.loadLookupTable("costs.csv", costsCsv).contains("error"), "loadLookupTable");
   check(!engine.loadInstances(instanceCsv).contains("error"), "loadInstances");
   engine.configure(json{ {"provider", "static"} });
 
   json state = engine.start();
   check(!state.contains("error"), "start");
+  check(!state["pending"].empty(), "the engine stopped at the message delivery");
 
-  json fullLog = json::array();
-  auto absorb = [&](const json& snapshot) {
-    if (snapshot.contains("log")) {
-      for (const auto& entry : snapshot["log"]) {
-        fullLog.push_back(entry);
-      }
-    }
-  };
-  absorb(state);
-
-  bool madeDelivery = false;
-  bool sawCandidate = false;
+  int delivered = 0;
   int guard = 0;
-  while (guard++ < 100) {
-    const auto& pending = state["pending"];
-    if (pending.empty()) {
-      break;
-    }
-    bool acted = false;
-    for (const auto& decisionRequest : pending) {
-      std::string type = decisionRequest["type"];
-      json decision = { {"requestId", decisionRequest["requestId"]}, {"type", type} };
-      if (type == "choice") {
-        json choices = json::array();
-        for (const auto& choice : decisionRequest["choices"]) {
-          choices.push_back(choice["enumeration"][0]);
-        }
-        decision["choices"] = choices;
-      }
-      else if (type == "messageDelivery") {
-        if (decisionRequest["candidates"].empty()) {
-          continue; // no message to deliver yet; drive the sender first
-        }
-        sawCandidate = true;
-        decision["messageId"] = decisionRequest["candidates"][0]["messageId"];
-      }
-      json accepted = controller.submitDecision(decision);
-      if (accepted.contains("rejected")) {
-        continue;
-      }
-      if (type == "messageDelivery") {
-        madeDelivery = true;
-      }
-      state = engine.resume();
-      check(!state.contains("error"), "resume");
-      absorb(state);
-      acted = true;
-      break;
-    }
-    if (!acted) {
-      break;
-    }
+  while (!state["pending"].empty() && guard++ < 50) {
+    const auto& request = state["pending"][0];
+    check(request["type"] == "messageDelivery", "the pending decision is a message delivery");
+    check(!request["candidates"].empty(), "the delivery offers at least one candidate message");
+    const auto& candidate = request["candidates"][0];
+    json decision = {
+      {"type", "messageDelivery"},
+      {"instanceId", request["instanceId"]},
+      {"nodeId", request["nodeId"]},
+      {"origin", candidate["origin"]},
+      {"sender", candidate["sender"]},
+    };
+    check(!controller.submitDecision(decision).contains("rejected"), "submitDecision accepted");
+    ++delivered;
+    state = engine.resume();
+    check(!state.contains("error"), "resume");
   }
+  check(delivered == 1, "exactly one message was delivered");
 
-  std::cerr << "full log: " << fullLog.dump() << "\n";
-  check(sawCandidate, "the waiting token was offered the thrown message as a candidate");
-  check(madeDelivery, "a message delivery decision was driven");
-  check(logHas(fullLog, "message", "state", "DELIVERED"), "the message was delivered");
-  check(state["pending"].empty(), "the engine quiesced with no pending decision");
+  bool sent = false;
+  bool received = false;
+  for (const auto& entry : monitor.fullLog()) {
+    if (!entry.contains("token")) {
+      continue;
+    }
+    const auto& token = entry["token"];
+    if (token.value("state", std::string()) != "COMPLETED") {
+      continue;
+    }
+    std::string nodeId = token.value("nodeId", std::string());
+    if (nodeId == "SendRequestTask") sent = true;
+    else if (nodeId == "ReceiveRequestTask") received = true;
+  }
+  check(sent, "the send task completed");
+  check(received, "the receive task completed");
 
-  std::cerr << "ALL PASSED\n";
+  std::cerr << "ALL PASSED (message delivery)\n";
   return 0;
 }

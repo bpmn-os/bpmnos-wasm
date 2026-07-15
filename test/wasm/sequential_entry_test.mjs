@@ -1,6 +1,6 @@
-// WebAssembly message delivery test. The message of the assignment problem is not explicitly addressed,
-// so its delivery is surfaced to the caller, who names the waiting message by its origin and sender from
-// the header. This mirrors the native message test through the module's JavaScript interface.
+// WebAssembly sequential entry test. The children of a sequential ad-hoc subprocess are entered one at
+// a time by the caller, while every other entry is resolved automatically. This mirrors the native
+// sequential entry test through the module's JavaScript interface.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -20,12 +20,10 @@ function check(condition, message) {
 
 const module = await createBpmnos();
 
-const modelXml = readFileSync(join(root, 'test', 'fixtures', 'Assignment_problem.bpmn'), 'utf8');
-const costsCsv = readFileSync(join(root, 'test', 'fixtures', 'costs.csv'), 'utf8');
+const modelXml = readFileSync(join(root, 'test', 'fixtures', 'AdHocSubProcess.bpmn'), 'utf8');
 const instanceCsv =
   'INSTANCE_ID; NODE_ID; INITIALIZATION\n' +
-  'Client1; ClientProcess;\n' +
-  'Server1; ServerProcess;\n';
+  'Instance_1; Process_1;\n';
 
 const engine = new module.Engine();
 const monitor = new module.Monitor();
@@ -34,41 +32,33 @@ engine.attachMonitor(monitor);
 engine.attachController(controller);
 
 check(!('error' in JSON.parse(engine.loadModel(modelXml))), 'loadModel');
-check(!('error' in JSON.parse(engine.loadLookupTable('costs.csv', costsCsv))), 'loadLookupTable');
 check(!('error' in JSON.parse(engine.loadInstances(instanceCsv))), 'loadInstances');
 engine.configure(JSON.stringify({ provider: 'static' }));
 
 let state = JSON.parse(engine.start());
 check(!('error' in state), 'start');
-check(state.pending.length > 0, 'the engine stopped at the message delivery');
+check(state.pending.length > 0, 'the engine stopped at a sequential entry');
 
 const log = [...state.log];
-let delivered = 0;
+let entered = 0;
 let guard = 0;
 while (state.pending.length > 0 && guard++ < 50) {
   const request = state.pending[0];
-  check(request.type === 'messageDelivery', 'the pending decision is a message delivery');
-  check(request.candidates.length > 0, 'the delivery offers at least one candidate message');
-  const candidate = request.candidates[0];
-  const decision = {
-    type: 'messageDelivery',
-    instanceId: request.instanceId,
-    nodeId: request.nodeId,
-    origin: candidate.origin,
-    sender: candidate.sender,
-  };
+  check(request.type === 'entry', 'the pending decision is a sequential entry');
+  const decision = { type: 'entry', instanceId: request.instanceId, nodeId: request.nodeId };
   check(!('rejected' in JSON.parse(controller.submitDecision(JSON.stringify(decision)))), 'submitDecision accepted');
-  delivered += 1;
+  entered += 1;
   state = JSON.parse(engine.resume());
   check(!('error' in state), 'resume');
   log.push(...state.log);
 }
 
-check(delivered === 1, 'exactly one message was delivered');
+check(state.pending.length === 0, 'no decision is pending after the sequential entries');
+check(entered === 2, 'both ad-hoc children were entered');
 
 const completed = new Set(
   log.filter((e) => e.token && e.token.state === 'COMPLETED').map((e) => e.token.nodeId));
-check(completed.has('SendRequestTask'), 'the send task completed');
-check(completed.has('ReceiveRequestTask'), 'the receive task completed');
+check(completed.has('Activity_1') && completed.has('Activity_2'), 'both ad-hoc children completed');
+check(completed.has('AdHocSubProcess_1'), 'the ad-hoc subprocess completed');
 
-console.error('ALL PASSED (WebAssembly message delivery)');
+console.error('ALL PASSED (WebAssembly sequential entry)');

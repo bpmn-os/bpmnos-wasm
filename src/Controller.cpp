@@ -10,10 +10,10 @@ namespace BPMNOS::WASM {
 
 namespace {
 
-/// Returns the metadata for each choice of a decision task token, so the caller knows which
-/// values it may submit. A choice is defined either as an enumeration of allowed values or
-/// as a bounded range; the engine's two accessors are each valid only for their respective
-/// kind, so the kind is discriminated here before the accessor is called.
+/// Returns the metadata for each choice of a decision task token, so the caller knows which values it
+/// may submit. A choice is defined either as an enumeration of allowed values or as a bounded range;
+/// the engine's two accessors each assert unless called for the matching kind, so the kind is
+/// discriminated on the choice's enumeration before the accessor is called.
 json choiceMetadata(Execution::Token* token) {
   json out = json::array();
   if (!token->node || !token->node->extensionElements) {
@@ -44,12 +44,9 @@ json choiceMetadata(Execution::Token* token) {
   return out;
 }
 
-} // namespace
-
-Controller::Controller() = default;
-Controller::~Controller() = default;
-
-json Controller::messageCandidates(Execution::Token* token, const Execution::SystemState* systemState) {
+/// Returns the pool messages that may be delivered to the given waiting token, each with its origin and
+/// sender, the identity by which the caller names its choice, and its serialised content.
+json messageCandidates(Execution::Token* token, const Execution::SystemState* systemState) {
   json out = json::array();
   if (!systemState || !token->node || !token->node->extensionElements) {
     return out;
@@ -72,20 +69,54 @@ json Controller::messageCandidates(Execution::Token* token, const Execution::Sys
     if (!std::ranges::contains(senders, message->origin) || !message->matches(recipientHeader)) {
       continue;
     }
-    const Execution::Message* messagePtr = message.get();
-    std::uint64_t messageId;
-    auto found = idByMessage.find(messagePtr);
-    if (found != idByMessage.end()) {
-      messageId = found->second;
-    }
-    else {
-      messageId = nextId++;
-      idByMessage[messagePtr] = messageId;
-      messageHandles[messageId] = message->weak_from_this();
-    }
-    out.push_back(json{ {"messageId", messageId}, {"message", message->jsonify()} });
+    auto content = message->jsonify();
+    json candidate;
+    candidate["origin"] = content.value("origin", json());
+    candidate["sender"] = content.contains("header") ? content["header"].value("sender", json()) : json();
+    candidate["message"] = std::move(content);
+    out.push_back(std::move(candidate));
   }
   return out;
+}
+
+/// Returns the waiting token in the given pending list whose instance and node match, or a null pointer.
+std::shared_ptr<Execution::Token> findWaitingToken(
+  const auto& list, const std::string& instanceId, const std::string& nodeId) {
+  for (auto& tuple : list) {
+    auto token = std::get<0>(tuple).lock();
+    if (!token) {
+      continue;
+    }
+    auto identity = token->jsonify();
+    if (identity.value("instanceId", std::string()) == instanceId &&
+        identity.value("nodeId", std::string()) == nodeId) {
+      return token;
+    }
+  }
+  return nullptr;
+}
+
+} // namespace
+
+Controller::Controller() {
+  // The auto dispatchers mirror the unambiguous half of the greedy controller: the first feasible exit,
+  // the first feasible non sequential entry, and the directly addressed message delivery. The contested
+  // half, choices and the competing sequential entries and message deliveries, is left to the caller.
+  evaluator = std::make_unique<Execution::GuidedEvaluator>();
+  autoDispatchers.push_back(
+    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator.get()));
+  autoDispatchers.push_back(
+    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator.get()));
+  autoDispatchers.push_back(std::make_unique<Execution::InstantDirectMessage>());
+}
+
+Controller::~Controller() = default;
+
+void Controller::connect(Execution::Mediator* mediator) {
+  for (auto& dispatcher : autoDispatchers) {
+    dispatcher->connect(this);
+  }
+  Execution::Controller::connect(mediator);
 }
 
 json Controller::pendingDecisions(const Execution::SystemState* systemState) {
@@ -100,21 +131,12 @@ json Controller::pendingDecisions(const Execution::SystemState* systemState) {
       if (!token || !request) {
         continue;
       }
-      const Execution::DecisionRequest* requestPtr = request.get();
-      std::uint64_t id;
-      auto found = idByRequest.find(requestPtr);
-      if (found != idByRequest.end()) {
-        id = found->second;
-      }
-      else {
-        id = nextId++;
-        idByRequest[requestPtr] = id;
-        handles[id] = Handle{ std::get<0>(tuple), std::get<1>(tuple), requestPtr, type };
-      }
+      auto identity = token->jsonify();
       json entry;
-      entry["requestId"] = id;
       entry["type"] = type;
-      entry["token"] = token->jsonify();
+      entry["instanceId"] = identity.value("instanceId", json());
+      entry["nodeId"] = identity.value("nodeId", json());
+      entry["token"] = identity;
       if (std::string(type) == "choice") {
         entry["choices"] = choiceMetadata(token.get());
       }
@@ -132,40 +154,29 @@ json Controller::pendingDecisions(const Execution::SystemState* systemState) {
 }
 
 json Controller::submitDecision(const json& decision) {
-  if (!decision.contains("requestId") || !decision.contains("type")) {
-    return json{ {"rejected", "decision requires requestId and type"} };
+  if (!decision.contains("type")) {
+    return json{ {"rejected", "decision requires type"} };
   }
-  auto id = decision["requestId"].get<std::uint64_t>();
   std::string type = decision["type"].get<std::string>();
-  auto it = handles.find(id);
-  if (it == handles.end()) {
-    return json{ {"rejected", "unknown"}, {"requestId", id} };
+  if (type != "entry" && type != "exit" && type != "choice" && type != "messageDelivery") {
+    return json{ {"rejected", "unknown type: " + type} };
   }
-  auto token = it->second.token.lock();
-  auto request = it->second.request.lock();
-  if (!token || !request) {
-    idByRequest.erase(it->second.requestPtr);
-    handles.erase(it);
-    return json{ {"rejected", "expired"}, {"requestId", id} };
-  }
-  if (it->second.type != type) {
-    return json{ {"rejected", "type mismatch"}, {"requestId", id} };
+  if (!decision.contains("instanceId") || !decision.contains("nodeId")) {
+    return json{ {"rejected", "decision requires instanceId and nodeId"} };
   }
   if (type == "choice" && !decision.contains("choices")) {
-    return json{ {"rejected", "choice requires choices"}, {"requestId", id} };
+    return json{ {"rejected", "choice requires choices"} };
   }
-  if (type == "messageDelivery") {
-    if (!decision.contains("messageId")) {
-      return json{ {"rejected", "messageDelivery requires messageId"}, {"requestId", id} };
-    }
-    auto messageId = decision["messageId"].get<std::uint64_t>();
-    auto messageIt = messageHandles.find(messageId);
-    if (messageIt == messageHandles.end() || messageIt->second.expired()) {
-      return json{ {"rejected", "message unknown or expired"}, {"requestId", id}, {"messageId", messageId} };
-    }
+  if (type == "messageDelivery" && (!decision.contains("origin") || !decision.contains("sender"))) {
+    return json{ {"rejected", "messageDelivery requires origin and sender"} };
   }
   queue.push_back(decision);
-  return json{ {"queued", id} };
+  return json{ {"queued", true} };
+}
+
+json Controller::submitClockTick() {
+  queue.push_back(json{ {"type", "clockTick"} });
+  return json{ {"queued", "clockTick"} };
 }
 
 json Controller::submitTermination() {
@@ -173,76 +184,97 @@ json Controller::submitTermination() {
   return json{ {"queued", "termination"} };
 }
 
-std::shared_ptr<Execution::Event> Controller::dispatchEvent(const Execution::SystemState*) {
+std::shared_ptr<Execution::Event> Controller::dispatchEvent(const Execution::SystemState* systemState) {
+  // Auto resolve the unambiguous decisions in priority order, exactly as the greedy controller does: a
+  // decision is dispatched only while feasible, and any other event is forwarded immediately.
+  for (auto& dispatcher : autoDispatchers) {
+    if (auto event = dispatcher->dispatchEvent(systemState)) {
+      if (auto decision = std::dynamic_pointer_cast<Execution::Decision>(event)) {
+        if (decision->reward().has_value()) {
+          return event;
+        }
+      }
+      else {
+        return event;
+      }
+    }
+  }
+  // Then apply the caller's inputs, dropping any whose token is no longer waiting.
   while (!queue.empty()) {
     json decision = queue.front();
     queue.pop_front();
     std::string error;
-    auto event = makeEvent(decision, error);
-    if (event) {
+    if (auto event = makeUserEvent(decision, systemState, error)) {
       return event;
     }
-    // The handle expired between submission and dispatch; discard and try the next.
+    // The token was withdrawn or the message consumed between submission and dispatch; try the next.
   }
   return nullptr;
 }
 
-std::shared_ptr<Execution::Event> Controller::makeEvent(const json& decision, std::string& error) {
+std::shared_ptr<Execution::Event> Controller::makeUserEvent(
+  const json& decision, const Execution::SystemState* systemState, std::string& error) {
   std::string type = decision.value("type", std::string());
+  if (type == "clockTick") {
+    return std::make_shared<Execution::ClockTickEvent>(systemState);
+  }
   if (type == "termination") {
     return std::make_shared<Execution::TerminationEvent>();
   }
-  auto id = decision.value("requestId", std::uint64_t{ 0 });
-  auto it = handles.find(id);
-  if (it == handles.end()) {
-    error = "unknown";
-    return nullptr;
-  }
-  auto token = it->second.token.lock();
-  auto request = it->second.request.lock();
-  if (!token || !request) {
-    idByRequest.erase(it->second.requestPtr);
-    handles.erase(it);
-    error = "expired";
-    return nullptr;
-  }
-  std::shared_ptr<Execution::Event> event;
+
+  std::string instanceId = decision.value("instanceId", std::string());
+  std::string nodeId = decision.value("nodeId", std::string());
+  std::shared_ptr<Execution::Token> token;
   if (type == "entry") {
-    std::optional<BPMNOS::Values> status;
-    if (decision.contains("status") && !decision["status"].is_null()) {
-      status = toValues(decision["status"]);
-    }
-    event = std::make_shared<Execution::EntryEvent>(token.get(), status);
+    token = findWaitingToken(systemState->pendingEntryDecisions, instanceId, nodeId);
   }
   else if (type == "exit") {
-    std::optional<BPMNOS::Values> status;
-    if (decision.contains("status") && !decision["status"].is_null()) {
-      status = toValues(decision["status"]);
-    }
-    event = std::make_shared<Execution::ExitEvent>(token.get(), status);
+    token = findWaitingToken(systemState->pendingExitDecisions, instanceId, nodeId);
   }
   else if (type == "choice") {
-    event = std::make_shared<Execution::ChoiceEvent>(token.get(), toChoiceValues(decision.at("choices")));
+    token = findWaitingToken(systemState->pendingChoiceDecisions, instanceId, nodeId);
   }
   else if (type == "messageDelivery") {
-    auto messageId = decision.value("messageId", std::uint64_t{ 0 });
-    auto messageIt = messageHandles.find(messageId);
-    auto message = (messageIt != messageHandles.end()) ? messageIt->second.lock() : nullptr;
-    if (!message) {
-      error = "message expired";
-      return nullptr;
-    }
-    event = std::make_shared<Execution::MessageDeliveryEvent>(token.get(), message.get());
-    idByMessage.erase(message.get());
-    messageHandles.erase(messageId);
+    token = findWaitingToken(systemState->pendingMessageDeliveryDecisions, instanceId, nodeId);
   }
   else {
     error = "unsupported type: " + type;
     return nullptr;
   }
-  idByRequest.erase(it->second.requestPtr);
-  handles.erase(it);
-  return event;
+  if (!token) {
+    error = "no matching pending decision";
+    return nullptr;
+  }
+
+  if (type == "entry" || type == "exit") {
+    std::optional<BPMNOS::Values> status;
+    if (decision.contains("status") && !decision["status"].is_null()) {
+      status = toValues(decision["status"]);
+    }
+    if (type == "entry") {
+      return std::make_shared<Execution::EntryEvent>(token.get(), status);
+    }
+    return std::make_shared<Execution::ExitEvent>(token.get(), status);
+  }
+  if (type == "choice") {
+    return std::make_shared<Execution::ChoiceEvent>(token.get(), toChoiceValues(decision.at("choices")));
+  }
+  // messageDelivery: find the chosen message by its origin and sender among the created pool messages.
+  std::string origin = decision.value("origin", std::string());
+  std::string sender = decision.value("sender", std::string());
+  for (const auto& message : systemState->messages) {
+    if (!message || message->state != Execution::Message::State::CREATED) {
+      continue;
+    }
+    auto content = message->jsonify();
+    std::string messageSender =
+      content.contains("header") ? content["header"].value("sender", std::string()) : std::string();
+    if (content.value("origin", std::string()) == origin && messageSender == sender) {
+      return std::make_shared<Execution::MessageDeliveryEvent>(token.get(), message.get());
+    }
+  }
+  error = "no matching message";
+  return nullptr;
 }
 
 } // namespace BPMNOS::WASM

@@ -50,6 +50,9 @@ std::string engineSnapshot(Engine& engine) {
 std::string controllerSubmitDecision(Controller& controller, const std::string& decision) {
   return controller.submitDecision(json::parse(decision)).dump();
 }
+std::string controllerSubmitClockTick(Controller& controller) {
+  return controller.submitClockTick().dump();
+}
 std::string controllerSubmitTermination(Controller& controller) {
   return controller.submitTermination().dump();
 }
@@ -91,6 +94,7 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
   class_<Controller>("Controller")
     .constructor<>()
     .function("submitDecision", &controllerSubmitDecision)
+    .function("submitClockTick", &controllerSubmitClockTick)
     .function("submitTermination", &controllerSubmitTermination);
 
   class_<Engine>("Engine")
