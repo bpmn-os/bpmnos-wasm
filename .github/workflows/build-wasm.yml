@@ -31,6 +31,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # schematic++ is the host code generator that the engine and bpmn++ run during their build to
+      # emit their XML parsers. The engine assumes it is present, as it assumes any code generator,
+      # so a build environment provides it. It is a small native CMake tool whose only dependency is
+      # native xerces-c, so build and install it here with the host compiler; it must run on the
+      # runner. This is the one native dependency an Emscripten cross build cannot avoid, since the
+      # generator needs an XSD parser on the host.
+      - name: Install schematic++
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxerces-c-dev
+          git clone --depth 1 https://github.com/rajgoel/schematicpp /tmp/schematicpp
+          cmake -S /tmp/schematicpp -B /tmp/schematicpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/schematicpp/build -j"$(nproc)"
+          sudo cmake --install /tmp/schematicpp/build
+          command -v schematic++
+
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
