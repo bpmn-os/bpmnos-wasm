@@ -14,34 +14,55 @@ namespace BPMNOS::WASM {
 
 using json = nlohmann::ordered_json;
 
-/// A passive sink for the engine's notifications.
-///
-/// The monitor subscribes to the token, event, and message observables of an engine and
-/// records each, serialised through the engine's own jsonify, into an append-only log. It
-/// owns neither an engine nor a controller and never advances execution, so it may be
-/// attached on its own to any engine, including one driven autonomously by the engine's
-/// own controller or one merely replaying recorded behaviour. Withdrawal of a token
-/// arrives here as an ordinary token record whose state is WITHDRAWN.
+/**
+ * @brief A passive sink for the engine's notifications.
+ *
+ * The monitor subscribes to the token, event, and message observables of an engine and records each,
+ * serialised through the engine's own jsonify, into an append-only log. It owns neither an engine nor
+ * a controller and never advances execution, so it may be attached on its own to any engine, including
+ * one driven autonomously by the engine's own controller or one merely replaying recorded behaviour.
+ * Withdrawal of a token arrives here as an ordinary token record whose state is WITHDRAWN.
+ */
 class Monitor : public Execution::Observer {
 public:
   Monitor();
   ~Monitor() override;
 
-  /// Subscribes to the token, event, and message notifications of the given engine.
+  /**
+   * @brief Subscribes to the token, event, and message notifications of the given engine.
+   *
+   * @param engine The engine to observe.
+   */
   void subscribe(Execution::Engine* engine);
 
-  /// Registers a callback invoked with each entry the moment it is recorded, in addition to the
-  /// append-only log. A caller uses this to observe notifications live rather than by draining
-  /// after the fact. Passing an empty callback removes the sink.
+  /**
+   * @brief Registers a callback invoked with each entry the moment it is recorded, in addition to the
+   * append-only log. A caller uses this to observe notifications live rather than by draining after the
+   * fact.
+   *
+   * @param callback The callback invoked per recorded entry; an empty callback removes the sink.
+   */
   void onNotice(std::function<void(const json&)> callback);
 
-  /// Records one notification, appending its serialised form to the log.
+  /**
+   * @brief Records one notification, appending its serialised form to the log.
+   *
+   * @param observable The observed token, event, or message.
+   */
   void notice(const Execution::Observable* observable) override;
 
-  /// Returns the log entries recorded since the previous drain and marks them consumed.
+  /**
+   * @brief Returns the log entries recorded since the previous drain and marks them consumed.
+   *
+   * @return The delta of log entries since the previous drain.
+   */
   json drainLog();
 
-  /// Returns the entire log recorded so far without consuming any of it.
+  /**
+   * @brief Returns the entire log recorded so far without consuming any of it.
+   *
+   * @return The whole append-only log.
+   */
   const json& fullLog() const { return log; }
 
 private:
