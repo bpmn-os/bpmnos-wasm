@@ -1,7 +1,7 @@
 # bpmnos-wasm
 
-[![Build and publish wasm module](https://github.com/bpmn-os/bpmnos-wasm/actions/workflows/build-wasm.yml/badge.svg)](https://github.com/bpmn-os/bpmnos-wasm/actions/workflows/build-wasm.yml)
-[![Deploy demo to Pages](https://github.com/bpmn-os/bpmnos-wasm/actions/workflows/pages.yml/badge.svg)](https://github.com/bpmn-os/bpmnos-wasm/actions/workflows/pages.yml)
+[![wasm](https://github.com/bpmn-os/bpmnos-wasm/actions/workflows/build-wasm.yml/badge.svg)](https://github.com/bpmn-os/bpmnos-wasm/tree/dist/dist)
+[![demo](https://github.com/bpmn-os/bpmnos-wasm/actions/workflows/pages.yml/badge.svg)](https://bpmn-os.github.io/bpmnos-wasm/)
 
 This repository compiles the C++ BPMNOS execution engine to WebAssembly and provides a
 JavaScript interface that drives it interactively. It knows nothing about any modelling
