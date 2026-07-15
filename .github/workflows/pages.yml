@@ -1,4 +1,4 @@
-name: Deploy demo to Pages
+name: demo
 
 # The fast half. It does no compilation: it takes the built module from the dist branch and the web
 # directory from the triggering branch and publishes them to GitHub Pages. It runs automatically on
@@ -19,7 +19,7 @@ on:
       - 'demo/**'
   workflow_dispatch:
   workflow_run:
-    workflows: ["Build and publish wasm module"]
+    workflows: ["wasm"]
     types: [completed]
 
 permissions:

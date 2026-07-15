@@ -1,4 +1,4 @@
-name: Build and publish wasm module
+name: wasm
 
 # The slow half. It fetches xerces, bpmn++, and the engine from source, cross compiles the module,
 # and publishes the built module together with the package definition and types to the dist branch.
