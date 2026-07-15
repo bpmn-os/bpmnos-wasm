@@ -4,5 +4,5 @@
 /dist/
 *.log
 node_modules/
-web/bpmnos.mjs
-web/bpmnos.wasm
+demo/bpmnos.mjs
+demo/bpmnos.wasm

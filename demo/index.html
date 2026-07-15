@@ -6,37 +6,40 @@
   <title>BPMNOS greedy run</title>
   <style>
     :root { color-scheme: light dark; }
-    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
-    h1 { font-size: 1.25rem; }
+    html, body { height: 100%; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; box-sizing: border-box;
+           height: 100vh; display: flex; flex-direction: column; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+    p { max-width: 60rem; }
     .controls { display: grid; gap: 0.75rem; margin-bottom: 1rem; }
     label { display: flex; gap: 0.5rem; align-items: center; }
     label span { width: 9rem; }
     button { padding: 0.5rem 1.25rem; font-size: 1rem; width: fit-content; }
     #status { margin: 0.75rem 0; font-family: monospace; white-space: pre-wrap; }
-    #log { border: 1px solid gray; padding: 0.75rem; overflow: auto; max-height: 32rem;
-           font-family: monospace; font-size: 0.8rem; }
+    #log { flex: 1; min-height: 0; margin: 0; border: 1px solid gray; padding: 0.75rem;
+           overflow: auto; font-family: monospace; font-size: 0.8rem; }
+    #log code.hljs { background: transparent; padding: 0; }
   </style>
+  <link rel="stylesheet" media="(prefers-color-scheme: light)"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <link rel="stylesheet" media="(prefers-color-scheme: dark)"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
   <h1>BPMNOS greedy run</h1>
   <p>Choose a BPMN model and an instance CSV, then run. Execution is driven by the engine's greedy
-     controller with the guided evaluator; the monitor's JSON log is printed below.</p>
+     controller with the guided evaluator over the stochastic data provider, seeded afresh on each
+     run, so repeated runs may differ; the monitor's JSON log is printed below.</p>
 
   <div class="controls">
     <label><span>BPMN model</span><input type="file" id="model" accept=".bpmn,.xml"></label>
     <label><span>Instance CSV</span><input type="file" id="instances" accept=".csv"></label>
-    <label><span>Data provider</span>
-      <select id="provider">
-        <option value="static">static</option>
-        <option value="expected">expected</option>
-        <option value="stochastic">stochastic</option>
-      </select>
-    </label>
     <button id="run" disabled>Run</button>
   </div>
 
   <div id="status">loading module...</div>
-  <pre id="log"></pre>
+  <pre id="log"><code id="logCode" class="language-json"></code></pre>
 
   <script type="module">
     import createBpmnos from './bpmnos.mjs';
@@ -52,7 +55,16 @@
 
     function showError(message) {
       $('status').textContent = 'error: ' + message;
-      $('log').textContent = '';
+      renderLog('');
+    }
+
+    // Render text into the log element, syntax highlighting non-empty JSON with highlight.js.
+    function renderLog(text) {
+      const code = $('logCode');
+      code.textContent = text;
+      code.className = 'language-json';
+      delete code.dataset.highlighted;
+      if (text && window.hljs) hljs.highlightElement(code);
     }
 
     $('run').addEventListener('click', async () => {
@@ -62,6 +74,11 @@
         showError('choose both a BPMN model and an instance CSV');
         return;
       }
+      // Clear the previous run and let the browser paint the cleared state before the blocking run.
+      renderLog('');
+      $('status').textContent = 'running...';
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       const modelXml = await modelFile.text();
       const instanceCsv = await instanceFile.text();
 
@@ -74,17 +91,24 @@
       if (result.error) return showError(result.error);
       result = JSON.parse(engine.loadInstances(instanceCsv));
       if (result.error) return showError(result.error);
-      engine.configure(JSON.stringify({ provider: $('provider').value }));
 
+      // The stochastic provider with a fresh random seed makes repeated runs differ.
+      const seed = Math.floor(Math.random() * 0x100000000);
+      engine.configure(JSON.stringify({ provider: 'stochastic', seed }));
+
+      const startedAt = performance.now();
       const snapshot = JSON.parse(engine.start());
+      const elapsedMs = performance.now() - startedAt;
       if (snapshot.error) return showError(snapshot.error);
 
       $('status').textContent =
         'outcome: ' + snapshot.outcome +
         '\nobjective: ' + snapshot.objective +
         '\nfinal time: ' + snapshot.time +
-        '\nlog entries: ' + snapshot.log.length;
-      $('log').textContent = JSON.stringify(snapshot.log, null, 2);
+        '\nlog entries: ' + snapshot.log.length +
+        '\nseed: ' + seed +
+        '\nrun time: ' + elapsedMs.toFixed(1) + ' ms';
+      renderLog(JSON.stringify(snapshot.log, null, 2));
     });
   </script>
 </body>
