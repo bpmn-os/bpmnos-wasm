@@ -12,6 +12,27 @@ the opaque handle registry. The engine class owns the execution engine and drive
 four decision kinds, entry, exit, choice, and message delivery, are implemented, and two native tests
 drive real fixtures and pass with no sanitizer finding.
 
+The monitor keeps a log that only grows and returns fresh entries through `drainLog`, and it also
+accepts a live callback through `onNotice` that it invokes with each entry, serialised as a JSON
+string, at the moment the entry is recorded. Both paths deliver the same entries in the same order,
+and that order is the engine's own order of execution. The engine notifies its observers
+synchronously on one thread, calling `notice` once for each state change as execution proceeds, and
+the monitor appends the entry to its log and then invokes the callback within that same call, before
+the engine issues the next notification. Nothing in the bridge sorts, batches, or defers, so a
+consumer observes exactly the sequence the engine produced, and passing a null callback clears the
+sink. The one condition is that the callback runs inside `notice` inside the engine's run and must
+only observe. A callback that advanced the engine, or that deferred its work across a promise or a
+timer before forwarding the entry, could interleave notifications and lose the order.
+
+Because `start` and `resume` are single blocking calls, a consumer that must not block while the
+engine runs drives the engine from a worker and forwards each entry from the callback into its own
+context. A message posted from a worker arrives in the order it was sent, so the order survives that
+boundary as well. The demo does exactly this: it runs the engine in a worker, appends each entry to
+the page as it arrives, and reports both the engine's run time and the time until the display is
+complete. The workbench will consume the stream the same way, and because it paces playback to the
+animation of token movement, the cost of serialising the log stays hidden behind the wait for
+movement.
+
 The WebAssembly build works. Under the Emscripten toolchain the same CMake fetches xerces, bpmn++,
 and the engine from source into the build tree, cross compiles them there, and links the bridge and
 its embind bindings into `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`. The engine cross
