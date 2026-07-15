@@ -106,6 +106,7 @@ else()
       -DCMAKE_INSTALL_PREFIX=${STAGE}
       -DCMAKE_BUILD_TYPE=Release
       -DCMAKE_FIND_ROOT_PATH=${STAGE}
+      -DDOCUMENTATION=OFF
       -DXERCES_LIB=${STAGE}/lib/libxerces-c.a
       "-DCMAKE_CXX_FLAGS=-isystem ${STAGE}/include ${WASM_DEP_FLAGS}"
     BUILD_BYPRODUCTS ${STAGE}/lib/libbpmn++.a
@@ -120,6 +121,7 @@ else()
     CMAKE_ARGS ${EP_TOOLCHAIN}
       -DNDEBUG=ON
       -DBPMNOS_TESTS=OFF
+      -DDOCUMENTATION=OFF
       -DCMAKE_FIND_ROOT_PATH=${STAGE}
       -DXERCES_LIB=${STAGE}/lib/libxerces-c.a
       -DBPMNPP_LIB=${STAGE}/lib/libbpmn++.a
