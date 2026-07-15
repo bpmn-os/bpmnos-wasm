@@ -1,13 +1,21 @@
 name: Deploy demo to Pages
 
-# Builds the WebAssembly module and deploys the web demo to GitHub Pages. The build fetches xerces,
-# bpmn++, and the engine from source and cross compiles them, so a runner reproduces it from
-# nothing. Enable Pages in the repository settings with the source set to GitHub Actions.
+# The fast half. It does no compilation: it takes the built module from the dist branch and the web
+# directory from the triggering branch and publishes them to GitHub Pages. It runs automatically on
+# any push to main, after the build workflow refreshes the module on main, and on manual request
+# from any branch so a work-in-progress preview can be deployed from develop on demand. Because
+# Pages has a single site, every deploy publishes to the same URL; a manual develop deploy is a
+# temporary preview that the next main deploy overwrites. The dist branch must exist first, so run
+# the build workflow once before the first deploy. Enable Pages in the repository settings with the
+# source set to GitHub Actions.
 
 on:
   push:
-    branches: [develop, main]
+    branches: [main]
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build and publish wasm module"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -19,27 +27,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-site:
+    # For an automatic run after the build workflow, only proceed when that build succeeded on main.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+      - name: Check out the page from the triggering branch
+        uses: actions/checkout@v4
         with:
-          version: latest
-          actions-cache-folder: emsdk-cache
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
 
-      - name: Build the WebAssembly module
-        run: |
-          emcmake cmake -S . -B build-wasm
-          cmake --build build-wasm --target bpmnos_module -j"$(nproc)"
+      - name: Check out the built module from the dist branch
+        uses: actions/checkout@v4
+        with:
+          ref: dist
+          path: _dist
 
       - name: Assemble the site
         run: |
-          mkdir -p site
-          cp -r web/index.html web/samples site/
-          cp dist/bpmnos.mjs dist/bpmnos.wasm site/
+          mkdir -p site/samples
+          cp web/index.html site/
+          cp web/samples/* site/samples/
+          cp _dist/dist/bpmnos.mjs _dist/dist/bpmnos.wasm site/
 
       - name: Upload the site artifact
         uses: actions/upload-pages-artifact@v3
@@ -47,7 +58,7 @@ jobs:
           path: site
 
   deploy:
-    needs: build
+    needs: build-site
     runs-on: ubuntu-latest
     environment:
       name: github-pages
