@@ -10,10 +10,6 @@
 #include "Convert.h"
 #include "Monitor.h"
 
-#include <bpmn++.h>
-#include <bpmnos-model.h>
-#include <bpmnos-execution.h>
-
 namespace BPMNOS::WASM {
 
 Engine::Engine() {
@@ -123,7 +119,18 @@ void Engine::build() {
     monitor->subscribe(engine.get());
   }
   if (controller) {
+    // A caller-supplied controller drives the decisions.
     controller->connect(engine.get());
+  }
+  else {
+    // No controller: run autonomously, mirroring the engine's greedy application.
+    evaluator = std::make_unique<Execution::GuidedEvaluator>();
+    greedyController = std::make_unique<Execution::GreedyController>(evaluator.get());
+    greedyController->connect(engine.get());
+    timeWarp = std::make_unique<Execution::TimeWarp>();
+    timeWarp->connect(engine.get());
+    outcomeSentinel = std::make_unique<Execution::OutcomeSentinel>();
+    outcomeSentinel->subscribe(engine.get());
   }
   built = true;
 }
@@ -140,6 +147,14 @@ json Engine::buildSnapshot(json extra) {
   bool alive = systemState && systemState->isAlive();
   extra["alive"] = alive;
   extra["done"] = !alive;
+  // On an autonomous run the outcome sentinel reports how execution ended and the system state
+  // carries the weighted objective, mirroring what the engine's greedy application prints.
+  if (outcomeSentinel) {
+    extra["outcome"] = Execution::outcome[(std::size_t)outcomeSentinel->getOutcome()];
+    if (systemState) {
+      extra["objective"] = toDouble(systemState->getWeightedObjective());
+    }
+  }
   return extra;
 }
 

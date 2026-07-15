@@ -151,13 +151,21 @@ else()
     ${STAGE}/lib/libbpmn++.a
     ${STAGE}/lib/libxerces-c.a
   )
+  # Emit an ES module whose default export is the factory, so a bundler can import it and resolve
+  # bpmnos.wasm through import.meta.url. The module is written into dist, which is what the package
+  # ships, the demo copies, and the Node tests import.
   target_link_options(bpmnos_module PRIVATE
     -fwasm-exceptions
     -lembind
     -sMODULARIZE=1
+    -sEXPORT_ES6=1
     -sEXPORT_NAME=createBpmnos
     -sALLOW_MEMORY_GROWTH=1
     -sFORCE_FILESYSTEM=1
   )
-  set_target_properties(bpmnos_module PROPERTIES OUTPUT_NAME "bpmnos" SUFFIX ".js")
+  set_target_properties(bpmnos_module PROPERTIES
+    OUTPUT_NAME "bpmnos"
+    SUFFIX ".mjs"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/dist
+  )
 endif()

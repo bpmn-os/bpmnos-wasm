@@ -1,0 +1,26 @@
+{
+  "name": "@bpmn-os/bpmnos-wasm",
+  "version": "0.1.0",
+  "description": "WebAssembly build of the BPMN-OS execution engine with an interactive JavaScript interface.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./types/bpmnos.d.ts",
+      "import": "./dist/bpmnos.mjs"
+    }
+  },
+  "files": [
+    "dist/bpmnos.mjs",
+    "dist/bpmnos.wasm",
+    "types/bpmnos.d.ts"
+  ],
+  "scripts": {
+    "build": "emcmake cmake -S . -B build-wasm && cmake --build build-wasm --target bpmnos_module",
+    "test:wasm": "node test/wasm/drive_test.mjs && node test/wasm/message_test.mjs && node test/wasm/greedy_test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bpmn-os/bpmnos-wasm.git"
+  }
+}
