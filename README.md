@@ -28,20 +28,24 @@ may be attached on its own to any engine, including one that a caller drives wit
 that runs autonomously under the engine's own controller. Withdrawal of a token reaches the caller
 through this same log as an ordinary token record whose state is reported as withdrawn.
 
-The controller is the input side. It derives from the engine's event dispatcher interface, so that
-once it is connected to an engine the engine's fetch loop polls it for the next event. When the
-caller has submitted a decision the controller returns it; otherwise it returns nothing, and the
-engine, finding no further event to process, stops and returns to the caller. The controller owns
-the registry that maps an opaque request identifier, which is the only reference the caller ever
-holds, to a weak pointer into engine state. It revalidates that identifier both when a decision is
-submitted and again when the decision is dispatched, so a decision aimed at a token that has since
-been withdrawn cannot take effect.
+The controller is the input side. It derives from the engine's controller, so once it is connected
+the engine's fetch loop polls it for the next event. It owns the unambiguous half of the greedy
+controller, the feasible exit, the feasible non sequential entry, and the directly addressed message
+delivery, each evaluated by a guided evaluator, and resolves those without the caller. Everything
+contested, a choice, the entry of a child of a sequential ad hoc subprocess, and an ambiguous message
+delivery, it surfaces to the caller through the snapshot's pending decisions and applies from a
+submitted decision; the caller also advances the clock and ends execution through it. A decision is
+identified by the natural identity of its token, its instance and its node, and a message by its
+origin and its sender, and every submission is validated against the live system state when it is
+dispatched, so a decision aimed at a token that has since been withdrawn finds no match and is dropped.
 
-The engine class owns the execution engine. It builds the data provider and the scenario from the
-loaded model, lookup tables, and instance data, connects a monitor and, when the caller intends to
-supply decisions, a controller, and exposes the calls that load inputs and the calls that advance
-execution. A caller constructs a monitor, and a controller when it means to decide, attaches them,
-loads the model and the data, and then drives.
+The engine class owns the execution engine. It takes its inputs in memory and touches no filesystem:
+it parses the model XML into a tree with the engine's own parser, reports through requiredLookups which
+lookup tables the model references so the caller can supply each by its source name, and holds the
+instance data as text, assembling the data provider and the scenario from these when a run begins. It
+connects a monitor and, when the caller intends to supply decisions, a controller, and exposes the
+calls that load inputs and the calls that advance execution. A caller constructs a monitor, and a
+controller when it means to decide, attaches them, loads the model and the data, and then drives.
 
 ## Driving an execution
 
