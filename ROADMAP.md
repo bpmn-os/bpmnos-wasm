@@ -7,6 +7,36 @@ data in, lets JS act as the engine's dispatcher (supplying clock ticks and decis
 engine's own token/event/message log out. Any mapping into an animation/playback vocabulary happens
 **downstream in `bpmnos-workbench`**, never here.
 
+## Status — implemented
+
+All six required capabilities are implemented and tested, native and WebAssembly, and the build is
+green in CI with the module published to the `dist` branch and the demo deployed to Pages. Milestones
+M0 through M8 are done. The implementation diverged from the original plan below in a few deliberate
+ways, recorded here; the sections that follow remain the design rationale except where noted.
+
+- **Identity by natural keys, not opaque handles.** A pending decision is identified by its token's
+  instance and node, and a message by its origin and sender from the header, rather than by an opaque
+  integer handle in a bridge registry. A submission carries only that identity and is validated by a
+  live lookup in the system state at dispatch, so a decision for a withdrawn token finds no match and
+  is dropped. This keeps the safety the handle registry was designed for, using the engine's own data
+  the caller already sees in the log, with no registry to maintain.
+- **In-memory inputs, not MEMFS.** The engine gained a small, additive, coordinated interface,
+  `BPMNOS::Model::Input` carrying a parsed model tree, lookup tables keyed by source name, and the
+  instance text, plus `Model::getLookupTableNames` to enumerate a model's lookup sources. The bridge
+  parses the model with the engine's own parser, discovers the lookups it needs (surfaced through
+  `requiredLookups`), and passes everything in memory. There is no temporary file and no MEMFS, and the
+  module drops `-sFORCE_FILESYSTEM`. So the "no engine code changes" note below became one agreed
+  additive change to the engine's model layer, made by the engine team.
+- **The interactive controller auto-resolves the unambiguous decisions.** Rather than connect no
+  dispatcher, the controller owns the unambiguous half of the greedy controller, the feasible exit, the
+  feasible non sequential entry, and the directly addressed message delivery, and leaves only the
+  contested decisions, a choice, a sequential ad hoc entry, and an ambiguous message delivery, together
+  with the clock tick and termination, to the caller. Without a controller the engine replicates the
+  greedy application.
+- **Live log through a callback.** Besides draining the log after each advance, the monitor offers
+  `onNotice`, invoked with each entry the moment it is recorded, in the engine's execution order, which
+  the demo streams to the page from a worker.
+
 ## Required capabilities (this is the contract)
 
 1. **Input** — pass BPMN model XML, lookup CSV tables (a folder, or the tables directly), and
