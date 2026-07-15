@@ -162,7 +162,6 @@ else()
     -sEXPORT_ES6=1
     -sEXPORT_NAME=createBpmnos
     -sALLOW_MEMORY_GROWTH=1
-    -sFORCE_FILESYSTEM=1
   )
   set_target_properties(bpmnos_module PROPERTIES
     OUTPUT_NAME "bpmnos"

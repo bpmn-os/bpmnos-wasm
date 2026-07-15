@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -47,6 +48,9 @@ public:
 
   // Inputs. Each returns {"ok": true} on success or {"error": message} on failure.
   json loadModel(const std::string& bpmnXml);
+  /// After loadModel, returns as a JSON array the lookup table source names the model references, so
+  /// the caller can supply each with loadLookupTable.
+  json requiredLookups();
   json loadLookupTable(const std::string& name, const std::string& csv);
   json loadInstances(const std::string& csv);
   json configure(const json& config); // {"provider": "static|expected|dynamic|stochastic", "seed": n}
@@ -63,11 +67,11 @@ private:
   void build();
   json buildSnapshot(json extra);
 
-  std::string workDir;
-  std::string modelPath;
+  std::string modelXml;                                       ///< retained BPMN XML, reparsed on build
+  std::unordered_map<std::string, std::string> lookupTables;  ///< lookup CSV content keyed by source name
+  std::vector<std::string> lookupNames;                       ///< lookup sources the model references
   bool haveModel = false;
   std::string instanceData;
-  std::vector<std::string> folders;
   std::string providerName = "static";
   unsigned int seed = 0;
   bool built = false;

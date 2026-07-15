@@ -47,6 +47,14 @@ it is validated against the live system state when it is dispatched, so a decisi
 since been withdrawn finds no match and is dropped. The message content plays no part in this identity;
 the engine derives it from status and data during delivery.
 
+The bridge takes its inputs in memory and touches no filesystem. The engine's data provider accepts an
+already parsed model tree, lookup tables as content keyed by their source name, and the instance data as
+text, grouped in a `BPMNOS::Model::Input`. So `loadModel` parses the BPMN XML into a tree with the
+engine's own parser, retains the text, and records through `getLookupTableNames` which lookup tables the
+model references, which `requiredLookups` reports so a caller supplies exactly those. On build the bridge
+reparses the retained text into a fresh tree, assembles the input, and constructs the provider from it,
+and the WebAssembly module therefore needs no emulated filesystem.
+
 The WebAssembly build works. Under the Emscripten toolchain the same CMake fetches xerces, bpmn++,
 and the engine from source into the build tree, cross compiles them there, and links the bridge and
 its embind bindings into `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`. The engine cross

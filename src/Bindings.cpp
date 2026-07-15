@@ -28,6 +28,9 @@ namespace {
 std::string engineLoadModel(Engine& engine, const std::string& bpmnXml) {
   return engine.loadModel(bpmnXml).dump();
 }
+std::string engineRequiredLookups(Engine& engine) {
+  return engine.requiredLookups().dump();
+}
 std::string engineLoadLookupTable(Engine& engine, const std::string& name, const std::string& csv) {
   return engine.loadLookupTable(name, csv).dump();
 }
@@ -102,6 +105,7 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .function("attachMonitor", &Engine::attachMonitor, allow_raw_pointers())
     .function("attachController", &Engine::attachController, allow_raw_pointers())
     .function("loadModel", &engineLoadModel)
+    .function("requiredLookups", &engineRequiredLookups)
     .function("loadLookupTable", &engineLoadLookupTable)
     .function("loadInstances", &engineLoadInstances)
     .function("configure", &engineConfigure)

@@ -56,6 +56,9 @@ int main(int argc, char** argv) {
   engine.attachController(&controller);
 
   check(!engine.loadModel(modelXml).contains("error"), "loadModel");
+  json required = engine.requiredLookups();
+  check(required.is_array() && required.size() == 1 && required[0] == "costs.csv",
+        "requiredLookups reports the model's lookup table");
   check(!engine.loadLookupTable("costs.csv", costsCsv).contains("error"), "loadLookupTable");
   check(!engine.loadInstances(instanceCsv).contains("error"), "loadInstances");
   engine.configure(json{ {"provider", "static"} });
