@@ -107,6 +107,7 @@ else()
       -DCMAKE_BUILD_TYPE=Release
       -DCMAKE_FIND_ROOT_PATH=${STAGE}
       -DDOCUMENTATION=OFF
+      -DBPMNPP_TESTS=OFF
       -DXERCES_LIB=${STAGE}/lib/libxerces-c.a
       "-DCMAKE_CXX_FLAGS=-isystem ${STAGE}/include ${WASM_DEP_FLAGS}"
     BUILD_BYPRODUCTS ${STAGE}/lib/libbpmn++.a
