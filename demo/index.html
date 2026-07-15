@@ -168,6 +168,11 @@
       requiredLookups = [];
       providedLookups.clear();
       $('lookups').replaceChildren();
+      // A model change invalidates the previously chosen instance and lookup files. In the
+      // BPMNOSInstances collection these are all named instance.csv and cannot be told apart by
+      // name, and a page cannot see their path, so clear the instance selection and force the user
+      // to pick the one that belongs to this model.
+      $('instances').value = '';
       updateRunEnabled();
       if (!file) {
         return;
