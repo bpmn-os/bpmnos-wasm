@@ -6,9 +6,8 @@
 // expresses as JSON crosses the boundary as a JSON string, so the binding neither marshals nor
 // depends on any particular JSON representation on the JavaScript side.
 //
-// This translation unit is empty unless compiled by Emscripten.
-
-#ifdef __EMSCRIPTEN__
+// This translation unit belongs to the WebAssembly build only. It lives under src/wasm and is
+// compiled into the module by the Emscripten target, so it is never part of the native build.
 
 #include <clocale>
 #include <string>
@@ -209,5 +208,3 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .function("resume", &engineResume)
     .function("snapshot", &engineSnapshot);
 }
-
-#endif // __EMSCRIPTEN__
