@@ -14,6 +14,7 @@
 #include <string>
 
 #include <emscripten/bind.h>
+#include <emscripten/val.h>
 
 #include "Controller.h"
 #include "Engine.h"
@@ -57,6 +58,19 @@ std::string monitorDrainLog(Monitor& monitor) {
   return monitor.drainLog().dump();
 }
 
+// Registers a JavaScript callback that receives each log entry, as a JSON string, the moment it
+// is recorded. On the demo this posts the entry from the worker to the page, so the log is shown
+// as it is observed rather than only after the run completes.
+void monitorOnNotice(Monitor& monitor, val callback) {
+  if (callback.isNull() || callback.isUndefined()) {
+    monitor.onNotice(nullptr);
+    return;
+  }
+  monitor.onNotice([callback](const json& entry) {
+    callback(entry.dump());
+  });
+}
+
 } // namespace
 
 // The module is a library of embind classes rather than a program, but Emscripten still
@@ -71,6 +85,7 @@ int main() {
 EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
   class_<Monitor>("Monitor")
     .constructor<>()
+    .function("onNotice", &monitorOnNotice)
     .function("drainLog", &monitorDrainLog);
 
   class_<Controller>("Controller")

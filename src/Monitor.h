@@ -2,6 +2,7 @@
 #define BPMNOS_WASM_MONITOR_H
 
 #include <cstddef>
+#include <functional>
 
 #include <nlohmann/json.hpp>
 
@@ -29,6 +30,11 @@ public:
   /// Subscribes to the token, event, and message notifications of the given engine.
   void subscribe(Execution::Engine* engine);
 
+  /// Registers a callback invoked with each entry the moment it is recorded, in addition to the
+  /// append-only log. A caller uses this to observe notifications live rather than by draining
+  /// after the fact. Passing an empty callback removes the sink.
+  void onNotice(std::function<void(const json&)> callback);
+
   /// Records one notification, appending its serialised form to the log.
   void notice(const Execution::Observable* observable) override;
 
@@ -41,6 +47,7 @@ public:
 private:
   json log;              ///< Append-only array of {"token"|"event"|"message": payload}.
   std::size_t drained;   ///< Number of entries already returned by drainLog.
+  std::function<void(const json&)> sink;  ///< Optional live callback, invoked per recorded entry.
 };
 
 } // namespace BPMNOS::WASM

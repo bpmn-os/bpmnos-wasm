@@ -31,6 +31,13 @@ export interface Engine {
 }
 
 export interface Monitor {
+  /**
+   * Register a callback invoked with each entry, as a JSON string, the moment it is recorded,
+   * so the caller observes notifications live rather than by draining after the run. The callback
+   * runs during the engine's blocking run, so a caller that must not block the page runs the engine
+   * in a worker and forwards each entry from the callback.
+   */
+  onNotice(callback: (entryJson: string) => void): void;
   /** Return the log entries recorded since the previous drain, as a JSON array string. */
   drainLog(): string;
   delete(): void;
