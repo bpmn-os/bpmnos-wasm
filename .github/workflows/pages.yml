@@ -10,8 +10,13 @@ name: Deploy demo to Pages
 # source set to GitHub Actions.
 
 on:
+  # A demo-only change on main deploys directly and fast. A source change instead triggers the
+  # build workflow, and this deploy then runs on that workflow's completion, so the two never run
+  # at the same time. Manual dispatch previews any branch on demand.
   push:
     branches: [main]
+    paths:
+      - 'web/**'
   workflow_dispatch:
   workflow_run:
     workflows: ["Build and publish wasm module"]
