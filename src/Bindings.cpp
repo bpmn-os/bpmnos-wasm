@@ -25,48 +25,140 @@ using namespace BPMNOS::WASM;
 
 namespace {
 
+/**
+ * @brief Binds Engine::loadModel, loading the BPMN model XML.
+ *
+ * @param engine The engine.
+ * @param bpmnXml The BPMN model XML.
+ * @return The JSON result as a string.
+ */
 std::string engineLoadModel(Engine& engine, const std::string& bpmnXml) {
   return engine.loadModel(bpmnXml).dump();
 }
+
+/**
+ * @brief Binds Engine::requiredLookups, reporting the model's lookup table source names.
+ *
+ * @param engine The engine.
+ * @return The JSON array of lookup table source names as a string.
+ */
 std::string engineRequiredLookups(Engine& engine) {
   return engine.requiredLookups().dump();
 }
+
+/**
+ * @brief Binds Engine::loadLookupTable, loading one lookup table's content.
+ *
+ * @param engine The engine.
+ * @param name The lookup table source name.
+ * @param csv The lookup table CSV content.
+ * @return The JSON result as a string.
+ */
 std::string engineLoadLookupTable(Engine& engine, const std::string& name, const std::string& csv) {
   return engine.loadLookupTable(name, csv).dump();
 }
+
+/**
+ * @brief Binds Engine::loadInstances, loading the instance data.
+ *
+ * @param engine The engine.
+ * @param csv The instance CSV content.
+ * @return The JSON result as a string.
+ */
 std::string engineLoadInstances(Engine& engine, const std::string& csv) {
   return engine.loadInstances(csv).dump();
 }
+
+/**
+ * @brief Binds Engine::configure, parsing the configuration JSON string.
+ *
+ * @param engine The engine.
+ * @param config The configuration as a JSON string.
+ * @return The JSON result as a string.
+ */
 std::string engineConfigure(Engine& engine, const std::string& config) {
   return engine.configure(json::parse(config)).dump();
 }
+
+/**
+ * @brief Binds Engine::start, running the engine from the start.
+ *
+ * @param engine The engine.
+ * @return The snapshot as a JSON string.
+ */
 std::string engineStart(Engine& engine) {
   return engine.start().dump();
 }
+
+/**
+ * @brief Binds Engine::resume, continuing a started run.
+ *
+ * @param engine The engine.
+ * @return The snapshot as a JSON string.
+ */
 std::string engineResume(Engine& engine) {
   return engine.resume().dump();
 }
+
+/**
+ * @brief Binds Engine::snapshot, returning the current snapshot without advancing.
+ *
+ * @param engine The engine.
+ * @return The snapshot as a JSON string.
+ */
 std::string engineSnapshot(Engine& engine) {
   return engine.snapshot().dump();
 }
 
+/**
+ * @brief Binds Controller::submitDecision, parsing the decision JSON string.
+ *
+ * @param controller The controller.
+ * @param decision The decision as a JSON string.
+ * @return The JSON result as a string.
+ */
 std::string controllerSubmitDecision(Controller& controller, const std::string& decision) {
   return controller.submitDecision(json::parse(decision)).dump();
 }
+
+/**
+ * @brief Binds Controller::submitClockTick, queuing a clock tick.
+ *
+ * @param controller The controller.
+ * @return The JSON result as a string.
+ */
 std::string controllerSubmitClockTick(Controller& controller) {
   return controller.submitClockTick().dump();
 }
+
+/**
+ * @brief Binds Controller::submitTermination, queuing a termination.
+ *
+ * @param controller The controller.
+ * @return The JSON result as a string.
+ */
 std::string controllerSubmitTermination(Controller& controller) {
   return controller.submitTermination().dump();
 }
 
+/**
+ * @brief Binds Monitor::drainLog, returning the log entries since the previous drain.
+ *
+ * @param monitor The monitor.
+ * @return The JSON array of log entries as a string.
+ */
 std::string monitorDrainLog(Monitor& monitor) {
   return monitor.drainLog().dump();
 }
 
-// Registers a JavaScript callback that receives each log entry, as a JSON string, the moment it
-// is recorded. On the demo this posts the entry from the worker to the page, so the log is shown
-// as it is observed rather than only after the run completes.
+/**
+ * @brief Registers a JavaScript callback that receives each log entry, as a JSON string, the moment it
+ * is recorded. On the demo this posts the entry from the worker to the page, so the log is shown as it
+ * is observed rather than only after the run completes.
+ *
+ * @param monitor The monitor.
+ * @param callback The JavaScript callback, or null or undefined to remove the sink.
+ */
 void monitorOnNotice(Monitor& monitor, val callback) {
   if (callback.isNull() || callback.isUndefined()) {
     monitor.onNotice(nullptr);
@@ -79,10 +171,14 @@ void monitorOnNotice(Monitor& monitor, val callback) {
 
 } // namespace
 
-// The module is a library of embind classes rather than a program, but Emscripten still
-// expects an entry point. It runs once when the module instantiates and selects a UTF-8
-// locale, so that xerces transcodes model attributes that contain multi-byte characters,
-// such as the set membership sign in a choice condition, rather than dropping them.
+/**
+ * @brief The module's entry point. It is a library of embind classes rather than a program, but
+ * Emscripten still expects a main; it runs once when the module instantiates and selects a UTF-8 locale,
+ * so that xerces transcodes model attributes that contain multi-byte characters, such as the set
+ * membership sign in a choice condition, rather than dropping them.
+ *
+ * @return Zero.
+ */
 int main() {
   std::setlocale(LC_ALL, "C.UTF-8");
   return 0;
