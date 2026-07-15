@@ -10,8 +10,13 @@ namespace BPMNOS::WASM {
 
 namespace {
 
-/// Parses BPMN XML content into a tree the engine's model layer consumes. The bridge holds the model
-/// as text and parses it here, so nothing is written to a filesystem.
+/**
+ * @brief Parses BPMN XML content into a tree the engine's model layer consumes. The bridge holds the
+ * model as text and parses it here, so nothing is written to a filesystem.
+ *
+ * @param bpmnXml The BPMN model XML.
+ * @return The parsed model tree.
+ */
 std::unique_ptr<XML::XMLObject> parseModel(const std::string& bpmnXml) {
   auto* root = XML::XMLObject::createFromString(bpmnXml);
   if (!root) {

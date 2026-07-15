@@ -10,10 +10,15 @@ namespace BPMNOS::WASM {
 
 namespace {
 
-/// Returns the metadata for each choice of a decision task token, so the caller knows which values it
-/// may submit. A choice is defined either as an enumeration of allowed values or as a bounded range;
-/// the engine's two accessors each assert unless called for the matching kind, so the kind is
-/// discriminated on the choice's enumeration before the accessor is called.
+/**
+ * @brief Returns the metadata for each choice of a decision task token, so the caller knows which values
+ * it may submit. A choice is defined either as an enumeration of allowed values or as a bounded range;
+ * the engine's two accessors each assert unless called for the matching kind, so the kind is
+ * discriminated on the choice's enumeration before the accessor is called.
+ *
+ * @param token The decision task token.
+ * @return A JSON array of the choice metadata.
+ */
 json choiceMetadata(Execution::Token* token) {
   json out = json::array();
   if (!token->node || !token->node->extensionElements) {
@@ -44,8 +49,14 @@ json choiceMetadata(Execution::Token* token) {
   return out;
 }
 
-/// Returns the pool messages that may be delivered to the given waiting token, each with its origin and
-/// sender, the identity by which the caller names its choice, and its serialised content.
+/**
+ * @brief Returns the pool messages that may be delivered to the given waiting token, each with its origin
+ * and sender, the identity by which the caller names its choice, and its serialised content.
+ *
+ * @param token The waiting token.
+ * @param systemState The current system state.
+ * @return A JSON array of the candidate messages.
+ */
 json messageCandidates(Execution::Token* token, const Execution::SystemState* systemState) {
   json out = json::array();
   if (!systemState || !token->node || !token->node->extensionElements) {
@@ -79,7 +90,14 @@ json messageCandidates(Execution::Token* token, const Execution::SystemState* sy
   return out;
 }
 
-/// Returns the waiting token in the given pending list whose instance and node match, or a null pointer.
+/**
+ * @brief Returns the waiting token in the given pending list whose instance and node match.
+ *
+ * @param list The pending decision list to search.
+ * @param instanceId The token's instance identity.
+ * @param nodeId The token's node identity.
+ * @return The matching token, or a null pointer when none matches.
+ */
 std::shared_ptr<Execution::Token> findWaitingToken(
   const auto& list, const std::string& instanceId, const std::string& nodeId) {
   for (auto& tuple : list) {
