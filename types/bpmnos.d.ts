@@ -13,7 +13,12 @@ export interface Engine {
 
   /** Load the BPMN model XML. Returns {"ok":true} or {"error":message}. */
   loadModel(bpmnXml: string): string;
-  /** Load one lookup table by name. Returns {"ok":true} or {"error":message}. */
+  /**
+   * After loadModel, returns a JSON array string of the lookup table source names the model
+   * references (the keys to supply to loadLookupTable), so a caller can prompt for exactly those.
+   */
+  requiredLookups(): string;
+  /** Load one lookup table by its source name. Returns {"ok":true} or {"error":message}. */
   loadLookupTable(name: string, csv: string): string;
   /** Load the instance CSV. Returns {"ok":true} or {"error":message}. */
   loadInstances(csv: string): string;

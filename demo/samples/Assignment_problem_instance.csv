@@ -1,0 +1,3 @@
+INSTANCE_ID; NODE_ID; INITIALIZATION
+Client1; ClientProcess;
+Server1; ServerProcess;

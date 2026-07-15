@@ -1,9 +1,5 @@
 #include "Engine.h"
 
-#include <algorithm>
-#include <atomic>
-#include <filesystem>
-#include <fstream>
 #include <stdexcept>
 
 #include "Controller.h"
@@ -12,18 +8,22 @@
 
 namespace BPMNOS::WASM {
 
-Engine::Engine() {
-  static std::atomic<std::uint64_t> counter{ 0 };
-  auto dir = std::filesystem::temp_directory_path()
-             / ("bpmnos-wasm-" + std::to_string(counter.fetch_add(1)));
-  std::filesystem::create_directories(dir);
-  workDir = dir.string();
+namespace {
+
+/// Parses BPMN XML content into a tree the engine's model layer consumes. The bridge holds the model
+/// as text and parses it here, so nothing is written to a filesystem.
+std::unique_ptr<XML::XMLObject> parseModel(const std::string& bpmnXml) {
+  auto* root = XML::XMLObject::createFromString(bpmnXml);
+  if (!root) {
+    throw std::runtime_error("failed to parse BPMN model");
+  }
+  return std::unique_ptr<XML::XMLObject>(root);
 }
 
-Engine::~Engine() {
-  std::error_code ignored;
-  std::filesystem::remove_all(workDir, ignored);
-}
+} // namespace
+
+Engine::Engine() = default;
+Engine::~Engine() = default;
 
 void Engine::attachMonitor(Monitor* monitorToAttach) {
   monitor = monitorToAttach;
@@ -35,33 +35,29 @@ void Engine::attachController(Controller* controllerToAttach) {
 
 json Engine::loadModel(const std::string& bpmnXml) {
   return guarded([&] {
-    modelPath = (std::filesystem::path(workDir) / "model.bpmn").string();
-    std::ofstream file(modelPath, std::ios::binary);
-    file << bpmnXml;
-    file.close();
-    if (!file) {
-      throw std::runtime_error("failed to write model file");
-    }
+    // Parse once here to validate the XML and to discover which lookup tables the model references,
+    // so the caller can be asked for exactly those. The text is retained and reparsed on build.
+    auto root = parseModel(bpmnXml);
+    lookupNames = Model::Model::getLookupTableNames(*root);
+    modelXml = bpmnXml;
     haveModel = true;
     built = false;
     return json{ {"ok", true} };
   });
 }
 
+json Engine::requiredLookups() {
+  return guarded([&] {
+    if (!haveModel) {
+      throw std::runtime_error("no model loaded");
+    }
+    return json(lookupNames);
+  });
+}
+
 json Engine::loadLookupTable(const std::string& name, const std::string& csv) {
   return guarded([&] {
-    auto lookupDir = std::filesystem::path(workDir) / "lookup";
-    std::filesystem::create_directories(lookupDir);
-    std::ofstream file((lookupDir / name), std::ios::binary);
-    file << csv;
-    file.close();
-    if (!file) {
-      throw std::runtime_error("failed to write lookup table");
-    }
-    auto lookup = lookupDir.string();
-    if (std::find(folders.begin(), folders.end(), lookup) == folders.end()) {
-      folders.push_back(lookup);
-    }
+    lookupTables[name] = csv;
     built = false;
     return json{ {"ok", true} };
   });
@@ -95,20 +91,21 @@ void Engine::build() {
   if (instanceData.empty()) {
     throw std::runtime_error("no instance data loaded");
   }
+  // Hand the provider the inputs in memory: a freshly parsed model tree, the lookup tables keyed by
+  // source name, and the instance CSV. The tree is parsed anew each build so a restart owns its own,
+  // while the lookup and instance content is copied from the retained members.
+  Model::Input input{ parseModel(modelXml), lookupTables, instanceData };
   if (providerName == "static") {
-    dataProvider = std::make_unique<Model::StaticDataProvider>(modelPath, folders, instanceData);
+    dataProvider = std::make_unique<Model::StaticDataProvider>(std::move(input));
   }
   else if (providerName == "expected") {
-    dataProvider = std::make_unique<Model::ExpectedValueDataProvider>(modelPath, folders, instanceData);
+    dataProvider = std::make_unique<Model::ExpectedValueDataProvider>(std::move(input));
   }
   else if (providerName == "dynamic") {
-    if (!folders.empty()) {
-      throw std::runtime_error("dynamic provider with lookup folders not yet supported");
-    }
-    dataProvider = std::make_unique<Model::DynamicDataProvider>(modelPath, instanceData);
+    dataProvider = std::make_unique<Model::DynamicDataProvider>(std::move(input));
   }
   else if (providerName == "stochastic") {
-    dataProvider = std::make_unique<Model::StochasticDataProvider>(modelPath, folders, instanceData, seed);
+    dataProvider = std::make_unique<Model::StochasticDataProvider>(std::move(input), seed);
   }
   else {
     throw std::runtime_error("unknown provider: " + providerName);

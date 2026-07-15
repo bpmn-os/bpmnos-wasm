@@ -34,6 +34,9 @@ engine.attachMonitor(monitor);
 engine.attachController(controller);
 
 check(!('error' in JSON.parse(engine.loadModel(modelXml))), 'loadModel');
+const required = JSON.parse(engine.requiredLookups());
+check(Array.isArray(required) && required.length === 1 && required[0] === 'costs.csv',
+  "requiredLookups reports the model's lookup table");
 check(!('error' in JSON.parse(engine.loadLookupTable('costs.csv', costsCsv))), 'loadLookupTable');
 check(!('error' in JSON.parse(engine.loadInstances(instanceCsv))), 'loadInstances');
 engine.configure(JSON.stringify({ provider: 'static' }));
