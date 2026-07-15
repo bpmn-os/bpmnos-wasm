@@ -1,0 +1,60 @@
+name: Build and publish wasm module
+
+# The slow half. It fetches xerces, bpmn++, and the engine from source, cross compiles the module,
+# and publishes the built module together with the package definition and types to the dist branch.
+# That branch is the built artifact: the Pages deploy reads it, and other repositories, such as the
+# workbench, consume it as a package with github:bpmn-os/bpmnos-wasm#dist. Because the build is
+# expensive it runs only when the bridge or the build description changes on main, and on manual
+# request from any branch, which is how a development build is refreshed without running on every
+# push.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'CMakeLists.txt'
+      - 'package.json'
+      - 'types/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-wasm
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the module
+        run: |
+          emcmake cmake -S . -B build-wasm
+          cmake --build build-wasm --target bpmnos_module -j"$(nproc)"
+
+      - name: Assemble the package
+        run: |
+          rm -rf package && mkdir -p package/dist package/types
+          cp dist/bpmnos.mjs dist/bpmnos.wasm package/dist/
+          cp types/bpmnos.d.ts package/types/
+          cp package.json package/
+          cp README.md package/ 2>/dev/null || true
+
+      - name: Publish to the dist branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: dist
+          publish_dir: ./package
+          force_orphan: true
+          commit_message: "build: publish module from ${{ github.sha }}"
