@@ -47,6 +47,11 @@ void Monitor::notice(const Execution::Observable* observable) {
   }
 }
 
+void Monitor::clear() {
+  log = json::array();
+  drained = 0;
+}
+
 json Monitor::drainLog() {
   json delta = json::array();
   for (std::size_t index = drained; index < log.size(); ++index) {

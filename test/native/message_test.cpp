@@ -16,6 +16,7 @@
 
 #include "Controller.h"
 #include "Engine.h"
+#include "Input.h"
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
@@ -49,28 +50,24 @@ int main(int argc, char** argv) {
     "Client1; ClientProcess;\n"
     "Server1; ServerProcess;\n";
 
-  Engine engine;
+  Input input(modelXml);
+  json required = input.requiredLookupTables();
+  check(required.is_array() && required.size() == 1 && required[0] == "costs.csv",
+        "requiredLookupTables reports the model's lookup table");
+  input.addLookupTable("costs.csv", costsCsv);
+  input.setInstance(instanceCsv);
   Monitor monitor;
   Controller controller;
-  engine.attachMonitor(&monitor);
-  engine.attachController(&controller);
+  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
 
-  check(!engine.loadModel(modelXml).contains("error"), "loadModel");
-  json required = engine.requiredLookups();
-  check(required.is_array() && required.size() == 1 && required[0] == "costs.csv",
-        "requiredLookups reports the model's lookup table");
-  check(!engine.loadLookupTable("costs.csv", costsCsv).contains("error"), "loadLookupTable");
-  check(!engine.loadInstances(instanceCsv).contains("error"), "loadInstances");
-  engine.configure(json{ {"provider", "static"} });
-
-  json state = engine.start();
-  check(!state.contains("error"), "start");
-  check(!state["pending"].empty(), "the engine stopped at the message delivery");
+  engine.run();
+  json pending = controller.pendingDecisions();
+  check(!pending.empty(), "the engine stopped at the message delivery");
 
   int delivered = 0;
   int guard = 0;
-  while (!state["pending"].empty() && guard++ < 50) {
-    const auto& request = state["pending"][0];
+  while (!pending.empty() && guard++ < 50) {
+    const auto& request = pending[0];
     check(request["type"] == "messageDelivery", "the pending decision is a message delivery");
     check(!request["candidates"].empty(), "the delivery offers at least one candidate message");
     const auto& candidate = request["candidates"][0];
@@ -83,8 +80,8 @@ int main(int argc, char** argv) {
     };
     check(!controller.submitDecision(decision).contains("rejected"), "submitDecision accepted");
     ++delivered;
-    state = engine.resume();
-    check(!state.contains("error"), "resume");
+    engine.resume();
+    pending = controller.pendingDecisions();
   }
   check(delivered == 1, "exactly one message was delivered");
 

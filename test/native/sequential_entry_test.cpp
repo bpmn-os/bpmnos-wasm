@@ -14,6 +14,7 @@
 
 #include "Controller.h"
 #include "Engine.h"
+#include "Input.h"
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
@@ -45,24 +46,20 @@ int main(int argc, char** argv) {
     "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
     "Instance_1; Process_1;\n";
 
-  Engine engine;
+  Input input(modelXml);
+  input.setInstance(instanceCsv);
   Monitor monitor;
   Controller controller;
-  engine.attachMonitor(&monitor);
-  engine.attachController(&controller);
+  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
 
-  check(!engine.loadModel(modelXml).contains("error"), "loadModel");
-  check(!engine.loadInstances(instanceCsv).contains("error"), "loadInstances");
-  engine.configure(json{ {"provider", "static"} });
-
-  json state = engine.start();
-  check(!state.contains("error"), "start");
-  check(!state["pending"].empty(), "the engine stopped at a sequential entry");
+  engine.run();
+  json pending = controller.pendingDecisions();
+  check(!pending.empty(), "the engine stopped at a sequential entry");
 
   int entered = 0;
   int guard = 0;
-  while (!state["pending"].empty() && guard++ < 50) {
-    const auto& entryRequest = state["pending"][0];
+  while (!pending.empty() && guard++ < 50) {
+    const auto& entryRequest = pending[0];
     check(entryRequest["type"] == "entry", "the pending decision is a sequential entry");
     json decision = {
       {"type", "entry"},
@@ -71,10 +68,10 @@ int main(int argc, char** argv) {
     };
     check(!controller.submitDecision(decision).contains("rejected"), "submitDecision accepted");
     ++entered;
-    state = engine.resume();
-    check(!state.contains("error"), "resume");
+    engine.resume();
+    pending = controller.pendingDecisions();
   }
-  check(state["pending"].empty(), "no decision is pending after the sequential entries");
+  check(pending.empty(), "no decision is pending after the sequential entries");
   check(entered == 2, "both ad-hoc children were entered");
 
   bool completedFirst = false;

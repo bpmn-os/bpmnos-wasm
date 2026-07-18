@@ -25,35 +25,32 @@ const instanceCsv =
   'INSTANCE_ID; NODE_ID; INITIALIZATION\n' +
   'Instance_1; Process_1;\n';
 
-const engine = new module.Engine();
+const input = new module.Input(modelXml);
+input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller();
-engine.attachMonitor(monitor);
-engine.attachController(controller);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, controller);
+input.delete();
 
-check(!('error' in JSON.parse(engine.loadModel(modelXml))), 'loadModel');
-check(!('error' in JSON.parse(engine.loadInstances(instanceCsv))), 'loadInstances');
-engine.configure(JSON.stringify({ provider: 'static' }));
+engine.run(0);
+let pending = JSON.parse(controller.pendingDecisions());
+check(pending.length > 0, 'the engine stopped at a sequential entry');
 
-let state = JSON.parse(engine.start());
-check(!('error' in state), 'start');
-check(state.pending.length > 0, 'the engine stopped at a sequential entry');
-
-const log = [...state.log];
+const log = JSON.parse(monitor.drainLog());
 let entered = 0;
 let guard = 0;
-while (state.pending.length > 0 && guard++ < 50) {
-  const request = state.pending[0];
+while (pending.length > 0 && guard++ < 50) {
+  const request = pending[0];
   check(request.type === 'entry', 'the pending decision is a sequential entry');
   const decision = { type: 'entry', instanceId: request.instanceId, nodeId: request.nodeId };
   check(!('rejected' in JSON.parse(controller.submitDecision(JSON.stringify(decision)))), 'submitDecision accepted');
   entered += 1;
-  state = JSON.parse(engine.resume());
-  check(!('error' in state), 'resume');
-  log.push(...state.log);
+  engine.resume();
+  pending = JSON.parse(controller.pendingDecisions());
+  log.push(...JSON.parse(monitor.drainLog()));
 }
 
-check(state.pending.length === 0, 'no decision is pending after the sequential entries');
+check(pending.length === 0, 'no decision is pending after the sequential entries');
 check(entered === 2, 'both ad-hoc children were entered');
 
 const completed = new Set(

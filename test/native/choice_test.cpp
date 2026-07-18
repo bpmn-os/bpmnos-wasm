@@ -15,6 +15,7 @@
 
 #include "Controller.h"
 #include "Engine.h"
+#include "Input.h"
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
@@ -47,29 +48,25 @@ int main(int argc, char** argv) {
     "Instance_1; Process_1;\n"
     "Instance_1; Activity_1; x := -2\n";
 
-  Engine engine;
+  Input input(modelXml);
+  input.setInstance(instanceCsv);
   Monitor monitor;
   Controller controller;
-  engine.attachMonitor(&monitor);
-  engine.attachController(&controller);
+  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
 
-  check(!engine.loadModel(modelXml).contains("error"), "loadModel");
-  check(!engine.loadInstances(instanceCsv).contains("error"), "loadInstances");
-  engine.configure(json{ {"provider", "static"} });
-
-  json state = engine.start();
-  check(!state.contains("error"), "start");
-  check(!state["pending"].empty(), "the engine stopped at the choice");
+  engine.run();
+  json pending = controller.pendingDecisions();
+  check(!pending.empty(), "the engine stopped at the choice");
 
   double submittedChoice = 0;
   int choiceCount = 0;
   int guard = 0;
-  while (!state["pending"].empty() && guard++ < 50) {
+  while (!pending.empty() && guard++ < 50) {
     // Entry and exit are automatic here, so every pending decision is a choice.
-    for (const auto& pending : state["pending"]) {
-      check(pending["type"] == "choice", "the only pending decision is a choice");
+    for (const auto& decision : pending) {
+      check(decision["type"] == "choice", "the only pending decision is a choice");
     }
-    const auto& choiceRequest = state["pending"][0];
+    const auto& choiceRequest = pending[0];
     ++choiceCount;
     json choices = json::array();
     for (const auto& choice : choiceRequest["choices"]) {
@@ -86,10 +83,10 @@ int main(int argc, char** argv) {
       {"choices", choices},
     };
     check(!controller.submitDecision(decision).contains("rejected"), "submitDecision accepted");
-    state = engine.resume();
-    check(!state.contains("error"), "resume");
+    engine.resume();
+    pending = controller.pendingDecisions();
   }
-  check(state["pending"].empty(), "no decision is pending after the choice");
+  check(pending.empty(), "no decision is pending after the choice");
   check(choiceCount == 1, "exactly one choice was made");
 
   bool applied = false;

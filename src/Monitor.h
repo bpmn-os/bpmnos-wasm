@@ -65,6 +65,12 @@ public:
    */
   const json& fullLog() const { return log; }
 
+  /**
+   * @brief Discards the log and the drain position, so a subsequent run records into an empty log. The
+   * live callback is retained.
+   */
+  void clear();
+
 private:
   json log;              ///< Append-only array of {"token"|"event"|"message": payload}.
   std::size_t drained;   ///< Number of entries already returned by drainLog.

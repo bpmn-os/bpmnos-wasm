@@ -15,6 +15,7 @@
 
 #include "Controller.h"
 #include "Engine.h"
+#include "Input.h"
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
@@ -46,35 +47,29 @@ int main(int argc, char** argv) {
     "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
     "Instance_1; Process_1; trigger := 3\n";
 
-  Engine engine;
+  Input input(modelXml);
+  input.setInstance(instanceCsv);
   Monitor monitor;
   Controller controller;
-  engine.attachMonitor(&monitor);
-  engine.attachController(&controller);
+  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
 
-  check(!engine.loadModel(modelXml).contains("error"), "loadModel");
-  check(!engine.loadInstances(instanceCsv).contains("error"), "loadInstances");
-  engine.configure(json{ {"provider", "static"} });
+  engine.run();
+  check(controller.pendingDecisions().empty(), "no decision is pending; the timer waits for the clock");
+  check(engine.isAlive(), "the system is alive, waiting for the timer");
 
-  json state = engine.start();
-  check(!state.contains("error"), "start");
-  check(state["pending"].empty(), "no decision is pending; the timer waits for the clock");
-  check(state["alive"].get<bool>(), "the system is alive, waiting for the timer");
-
-  double startTime = state["time"].get<double>();
+  double startTime = engine.getCurrentTime();
   int ticks = 0;
   int guard = 0;
-  while (state["alive"].get<bool>() && guard++ < 20) {
+  while (engine.isAlive() && guard++ < 20) {
     controller.submitClockTick();
-    double previousTime = state["time"].get<double>();
-    state = engine.resume();
-    check(!state.contains("error"), "resume after a clock tick");
-    check(state["time"].get<double>() == previousTime + 1, "a clock tick advances time by one");
+    double previousTime = engine.getCurrentTime();
+    engine.resume();
+    check(engine.getCurrentTime() == previousTime + 1, "a clock tick advances time by one");
     ++ticks;
   }
 
-  check(!state["alive"].get<bool>(), "the process terminated after the timer fired");
-  check(state["time"].get<double>() - startTime >= 3, "the clock reached the trigger time");
+  check(!engine.isAlive(), "the process terminated after the timer fired");
+  check(engine.getCurrentTime() - startTime >= 3, "the clock reached the trigger time");
 
   const json& fullLog = monitor.fullLog();
   bool reachedEnd = false;
@@ -91,7 +86,7 @@ int main(int argc, char** argv) {
   check(reachedEnd, "the token reached the end event");
 
   std::cerr << "terminated after " << ticks << " clock ticks, final time "
-            << state["time"] << "\n";
+            << engine.getCurrentTime() << "\n";
   std::cerr << "ALL PASSED\n";
   return 0;
 }

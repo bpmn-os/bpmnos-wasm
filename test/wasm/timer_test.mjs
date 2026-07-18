@@ -25,37 +25,32 @@ const instanceCsv =
   'INSTANCE_ID; NODE_ID; INITIALIZATION\n' +
   'Instance_1; Process_1; trigger := 3\n';
 
-const engine = new module.Engine();
+const input = new module.Input(modelXml);
+input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller();
-engine.attachMonitor(monitor);
-engine.attachController(controller);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, controller);
+input.delete();
 
-check(!('error' in JSON.parse(engine.loadModel(modelXml))), 'loadModel');
-check(!('error' in JSON.parse(engine.loadInstances(instanceCsv))), 'loadInstances');
-engine.configure(JSON.stringify({ provider: 'static' }));
+engine.run(0);
+check(JSON.parse(controller.pendingDecisions()).length === 0, 'no decision is pending; the timer waits for the clock');
+check(engine.isAlive(), 'the system is alive, waiting for the timer');
 
-let state = JSON.parse(engine.start());
-check(!('error' in state), 'start');
-check(state.pending.length === 0, 'no decision is pending; the timer waits for the clock');
-check(state.alive === true, 'the system is alive, waiting for the timer');
-
-const log = [...state.log];
+const log = JSON.parse(monitor.drainLog());
 let ticks = 0;
 let guard = 0;
-while (state.alive && guard++ < 20) {
+while (engine.isAlive() && guard++ < 20) {
   controller.submitClockTick();
-  const previousTime = state.time;
-  state = JSON.parse(engine.resume());
-  check(!('error' in state), 'resume after a clock tick');
-  check(state.time === previousTime + 1, 'a clock tick advances time by one');
-  log.push(...state.log);
+  const previousTime = engine.getCurrentTime();
+  engine.resume();
+  check(engine.getCurrentTime() === previousTime + 1, 'a clock tick advances time by one');
+  log.push(...JSON.parse(monitor.drainLog()));
   ticks += 1;
 }
 
-check(state.alive === false, 'the process terminated after the timer fired');
+check(!engine.isAlive(), 'the process terminated after the timer fired');
 check(log.some((e) => e.event && e.event.event === 'clocktick'), 'the clock ticks appear in the log');
 check(log.some((e) => e.token && e.token.nodeId === 'EndEvent_1'), 'the token reached the end event');
 
-console.error(`terminated after ${ticks} clock ticks, final time ${state.time}`);
+console.error(`terminated after ${ticks} clock ticks, final time ${engine.getCurrentTime()}`);
 console.error('ALL PASSED (WebAssembly clock tick)');
