@@ -38,11 +38,13 @@ const controller = new module.Controller();
 const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, controller);
 input.delete();
 
+const log = [];
+monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
+
 engine.run(0);
 let pending = JSON.parse(controller.pendingDecisions());
 check(pending.length > 0, 'the engine stopped at the message delivery');
 
-const log = JSON.parse(monitor.drainLog());
 let delivered = 0;
 let guard = 0;
 while (pending.length > 0 && guard++ < 50) {
@@ -61,7 +63,6 @@ while (pending.length > 0 && guard++ < 50) {
   delivered += 1;
   engine.resume();
   pending = JSON.parse(controller.pendingDecisions());
-  log.push(...JSON.parse(monitor.drainLog()));
 }
 
 check(delivered === 1, 'exactly one message was delivered');

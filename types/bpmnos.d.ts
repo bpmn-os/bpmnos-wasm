@@ -37,14 +37,15 @@ export interface Engine {
 
 export interface Monitor {
   /**
-   * Register a callback invoked with each entry, as a JSON string, the moment it is recorded,
-   * so the caller observes notifications live rather than by draining after the run. The callback
-   * runs during the engine's blocking run, so a caller that must not block the page runs the engine
-   * in a worker and forwards each entry from the callback.
+   * Register an observer invoked with each entry, as a JSON string, the moment it is recorded. Every
+   * registered observer receives every entry, in the engine's execution order, so a caller attaches one
+   * per module that needs the stream. The monitor keeps no history, so an observer attached after a run
+   * begins misses the entries before it. The observer runs during the engine's blocking run, so a caller
+   * that must not block the page runs the engine in a worker and forwards each entry from the observer.
+   * Each entry is a single {"token"|"event"|"message"|"entryRequest"|"exitRequest"|"choiceRequest"|
+   * "messageDeliveryRequest": payload}; a decision request carries the deciding token.
    */
-  onNotice(callback: (entryJson: string) => void): void;
-  /** Return the log entries recorded since the previous drain, as a JSON array string. */
-  drainLog(): string;
+  addObserver(observer: (entryJson: string) => void): void;
   delete(): void;
 }
 

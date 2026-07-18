@@ -60,6 +60,9 @@ int main(int argc, char** argv) {
   Controller controller;
   Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
 
+  json log = json::array();
+  monitor.addObserver([&](const json& entry) { log.push_back(entry); });
+
   engine.run();
   json pending = controller.pendingDecisions();
   check(!pending.empty(), "the engine stopped at the message delivery");
@@ -87,7 +90,7 @@ int main(int argc, char** argv) {
 
   bool sent = false;
   bool received = false;
-  for (const auto& entry : monitor.fullLog()) {
+  for (const auto& entry : log) {
     if (!entry.contains("token")) {
       continue;
     }

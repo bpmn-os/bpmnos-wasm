@@ -54,6 +54,9 @@ int main(int argc, char** argv) {
   Controller controller;
   Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
 
+  json log = json::array();
+  monitor.addObserver([&](const json& entry) { log.push_back(entry); });
+
   engine.run();
   json pending = controller.pendingDecisions();
   check(!pending.empty(), "the engine stopped at the choice");
@@ -90,7 +93,7 @@ int main(int argc, char** argv) {
   check(choiceCount == 1, "exactly one choice was made");
 
   bool applied = false;
-  for (const auto& entry : monitor.fullLog()) {
+  for (const auto& entry : log) {
     if (entry.contains("token")) {
       const auto& token = entry["token"];
       if (token.value("nodeId", std::string()) == "Activity_1"

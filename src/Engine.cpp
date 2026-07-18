@@ -45,11 +45,7 @@ void Engine::run(unsigned int scenarioId) {
   engine.reset();
   scenario.reset();
 
-  // Each run clears the monitor, so its log is this run's, and draws the named scenario; with a
-  // stochastic provider a different scenario id is a different sample.
-  if (monitor) {
-    monitor->clear();
-  }
+  // Draw the named scenario; with a stochastic provider a different scenario id is a different sample.
   scenario = dataProvider->createScenario(scenarioId);
   engine = std::make_unique<Execution::Engine>();
   if (monitor) {

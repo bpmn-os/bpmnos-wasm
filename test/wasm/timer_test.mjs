@@ -32,11 +32,13 @@ const controller = new module.Controller();
 const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, controller);
 input.delete();
 
+const log = [];
+monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
+
 engine.run(0);
 check(JSON.parse(controller.pendingDecisions()).length === 0, 'no decision is pending; the timer waits for the clock');
 check(engine.isAlive(), 'the system is alive, waiting for the timer');
 
-const log = JSON.parse(monitor.drainLog());
 let ticks = 0;
 let guard = 0;
 while (engine.isAlive() && guard++ < 20) {
@@ -44,7 +46,6 @@ while (engine.isAlive() && guard++ < 20) {
   const previousTime = engine.getCurrentTime();
   engine.resume();
   check(engine.getCurrentTime() === previousTime + 1, 'a clock tick advances time by one');
-  log.push(...JSON.parse(monitor.drainLog()));
   ticks += 1;
 }
 

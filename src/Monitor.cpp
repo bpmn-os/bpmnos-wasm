@@ -1,26 +1,29 @@
 #include "Monitor.h"
 
+#include <utility>
+
 namespace BPMNOS::WASM {
 
-Monitor::Monitor()
-  : log(json::array())
-  , drained(0)
-{
-}
+Monitor::Monitor() = default;
 
 Monitor::~Monitor() = default;
 
 void Monitor::subscribe(Execution::Engine* engine) {
+  using Type = Execution::Observable::Type;
   engine->addSubscriber(
     this,
-    Execution::Observable::Type::Token,
-    Execution::Observable::Type::Event,
-    Execution::Observable::Type::Message
+    Type::Token,
+    Type::Event,
+    Type::Message,
+    Type::EntryRequest,
+    Type::ChoiceRequest,
+    Type::ExitRequest,
+    Type::MessageDeliveryRequest
   );
 }
 
-void Monitor::onNotice(std::function<void(const json&)> callback) {
-  sink = std::move(callback);
+void Monitor::addObserver(std::function<void(const json&)> observer) {
+  observers.push_back(std::move(observer));
 }
 
 void Monitor::notice(const Execution::Observable* observable) {
@@ -36,29 +39,26 @@ void Monitor::notice(const Execution::Observable* observable) {
     case Type::Message:
       entry = json{ {"message", static_cast<const Execution::Message*>(observable)->jsonify()} };
       break;
+    case Type::EntryRequest:
+      entry = json{ {"entryRequest", static_cast<const Execution::DecisionRequest*>(observable)->token->jsonify()} };
+      break;
+    case Type::ChoiceRequest:
+      entry = json{ {"choiceRequest", static_cast<const Execution::DecisionRequest*>(observable)->token->jsonify()} };
+      break;
+    case Type::ExitRequest:
+      entry = json{ {"exitRequest", static_cast<const Execution::DecisionRequest*>(observable)->token->jsonify()} };
+      break;
+    case Type::MessageDeliveryRequest:
+      entry = json{ {"messageDeliveryRequest", static_cast<const Execution::DecisionRequest*>(observable)->token->jsonify()} };
+      break;
     default:
       return;
   }
-  log.push_back(entry);
-  // A registered sink observes the entry live, the moment it is recorded, before control returns
-  // to the engine. The append-only log is kept regardless, so draining still returns every entry.
-  if (sink) {
-    sink(entry);
+  // Forward synchronously to every observer, in the order observers were added, before returning to the
+  // engine. The engine notifies in execution order on one thread, so each observer sees that order.
+  for (const auto& observer : observers) {
+    observer(entry);
   }
-}
-
-void Monitor::clear() {
-  log = json::array();
-  drained = 0;
-}
-
-json Monitor::drainLog() {
-  json delta = json::array();
-  for (std::size_t index = drained; index < log.size(); ++index) {
-    delta.push_back(log[index]);
-  }
-  drained = log.size();
-  return delta;
 }
 
 } // namespace BPMNOS::WASM

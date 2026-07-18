@@ -1,8 +1,9 @@
-// WebAssembly live observation test. The monitor's onNotice callback delivers each entry the moment
-// it is recorded, during the engine's run, rather than only through a drain afterwards. This drives
-// the decision-task fixture to completion and checks that the callback fired once per entry, in the
-// same order and with the same content as the drained log, which is what the demo's worker relies on
-// to stream the log to the page as execution proceeds.
+// WebAssembly live observation test. The monitor is a stateless fan-out: it forwards each entry, the
+// moment it is recorded, to every registered observer, in the engine's execution order. This drives the
+// decision-task fixture to completion and checks that several observers each receive the same entries in
+// the same order, that decision requests are forwarded alongside token, event, and message records, and
+// that an observer attached after a run misses that run because the monitor keeps no history. The demo's
+// worker relies on this to stream the log to the page as execution proceeds.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,38 +35,40 @@ const monitor = new module.Monitor();
 const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, null);
 input.delete();
 
-// Collect every entry the callback delivers, in the order it arrives.
-const streamed = [];
-monitor.onNotice((entryJson) => streamed.push(entryJson));
+// Two observers, each collecting the stream independently, in the order it arrives.
+const first = [];
+const second = [];
+monitor.addObserver((entryJson) => first.push(entryJson));
+monitor.addObserver((entryJson) => second.push(entryJson));
 
 engine.run(0);
-const log = JSON.parse(monitor.drainLog());
 
-check(streamed.length > 0, `the callback fired (${streamed.length} entries)`);
-check(streamed.length === log.length,
-  `one callback per log entry (streamed ${streamed.length}, log ${log.length})`);
+check(first.length > 0, `the first observer received entries (${first.length})`);
+check(first.length === second.length, 'both observers received the same number of entries');
+check(JSON.stringify(first) === JSON.stringify(second),
+  'both observers received the same entries in the same order');
 
-// Each streamed entry is a JSON object carrying exactly one of the three notification kinds.
-const kinds = new Set(['token', 'event', 'message']);
-const parsed = streamed.map((entry) => JSON.parse(entry));
+// Each entry is a single-key object of a known kind, including the decision requests.
+const kinds = new Set([
+  'token', 'event', 'message',
+  'entryRequest', 'exitRequest', 'choiceRequest', 'messageDeliveryRequest',
+]);
+const parsed = first.map((entry) => JSON.parse(entry));
 check(parsed.every((entry) => Object.keys(entry).length === 1 && kinds.has(Object.keys(entry)[0])),
-  'every streamed entry is a single token, event, or message record');
+  'every entry is a single token, event, message, or decision request record');
+check(parsed.some((entry) => Object.keys(entry)[0].endsWith('Request')),
+  'a decision request is forwarded alongside the token, event, and message records');
 
-// The stream is exactly the drained log, in order.
-check(JSON.stringify(parsed) === JSON.stringify(log),
-  'the streamed entries equal the drained log, in order');
-
-// Passing null removes the sink. A fresh run, after clearing, delivers no further callbacks even
-// though it records a log, which the reusable run lets us verify on the same engine.
-monitor.onNotice(null);
-const before = streamed.length;
+// The monitor keeps no history, so an observer attached after a run misses that run; a fresh run reaches
+// it, which the reusable run lets us verify on the same engine.
+const late = [];
+monitor.addObserver((entryJson) => late.push(entryJson));
+check(late.length === 0, 'an observer attached after the run received nothing from it');
 engine.run(1);
-const log2 = JSON.parse(monitor.drainLog());
-check(streamed.length === before, 'no callbacks fire after the sink is cleared');
-check(log2.length > 0, 'the second run still recorded a log');
+check(late.length > 0, 'the late observer receives the next run');
 
 monitor.delete();
 engine.delete();
 
-console.error(`streamed ${streamed.length} entries live, matching the drained log`);
+console.error(`fanned ${first.length} entries to each observer, in order`);
 console.error('ALL PASSED (WebAssembly live observation)');

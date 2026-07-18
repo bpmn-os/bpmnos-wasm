@@ -39,8 +39,8 @@ function buildEngine(instances) {
   }
   input.setInstance(instances);
   monitor = new Module.Monitor();
-  // Each notification is posted the moment the monitor records it, from inside the blocking run.
-  monitor.onNotice((entry) => { self.postMessage({ type: 'entry', entry }); entryCount += 1; });
+  // Each notification is posted the moment the monitor forwards it, from inside the blocking run.
+  monitor.addObserver((entry) => { self.postMessage({ type: 'entry', entry }); entryCount += 1; });
   engine = new Module.Engine(input, JSON.stringify({ provider: 'stochastic', seed: 0 }), monitor, null);
   input.delete();
   scenarioId = 0;
