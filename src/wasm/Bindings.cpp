@@ -101,30 +101,17 @@ std::string controllerSubmitTermination(Controller& controller) {
 }
 
 /**
- * @brief Binds Monitor::drainLog, returning the log entries since the previous drain.
+ * @brief Registers a JavaScript observer that receives each entry, as a JSON string, the moment it is
+ * recorded. Every registered observer receives every entry, so a caller attaches one per module that
+ * needs the stream. On the demo this posts the entry from the worker to the page, so the log is shown as
+ * it is observed rather than only after the run completes.
  *
  * @param monitor The monitor.
- * @return The JSON array of log entries as a string.
+ * @param observer The JavaScript observer invoked per notification.
  */
-std::string monitorDrainLog(Monitor& monitor) {
-  return monitor.drainLog().dump();
-}
-
-/**
- * @brief Registers a JavaScript callback that receives each log entry, as a JSON string, the moment it
- * is recorded. On the demo this posts the entry from the worker to the page, so the log is shown as it
- * is observed rather than only after the run completes.
- *
- * @param monitor The monitor.
- * @param callback The JavaScript callback, or null or undefined to remove the sink.
- */
-void monitorOnNotice(Monitor& monitor, val callback) {
-  if (callback.isNull() || callback.isUndefined()) {
-    monitor.onNotice(nullptr);
-    return;
-  }
-  monitor.onNotice([callback](const json& entry) {
-    callback(entry.dump());
+void monitorAddObserver(Monitor& monitor, val observer) {
+  monitor.addObserver([observer](const json& entry) {
+    observer(entry.dump());
   });
 }
 
@@ -146,8 +133,7 @@ int main() {
 EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
   class_<Monitor>("Monitor")
     .constructor<>()
-    .function("onNotice", &monitorOnNotice)
-    .function("drainLog", &monitorDrainLog);
+    .function("addObserver", &monitorAddObserver);
 
   class_<Controller>("Controller")
     .constructor<>()

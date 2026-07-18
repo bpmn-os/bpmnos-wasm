@@ -33,8 +33,10 @@ const monitor = new module.Monitor();
 const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, null);
 input.delete();
 
+const log = [];
+monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
+
 engine.run(0);
-const log = JSON.parse(monitor.drainLog());
 check(!engine.isAlive(), 'the autonomous run terminated');
 check(Array.isArray(log) && log.length > 0, 'the monitor captured a log');
 check(log.some((e) => e.token && e.token.nodeId === 'Activity_1' && e.token.state === 'COMPLETED'),

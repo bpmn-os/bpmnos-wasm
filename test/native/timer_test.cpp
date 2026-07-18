@@ -53,6 +53,9 @@ int main(int argc, char** argv) {
   Controller controller;
   Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
 
+  json log = json::array();
+  monitor.addObserver([&](const json& entry) { log.push_back(entry); });
+
   engine.run();
   check(controller.pendingDecisions().empty(), "no decision is pending; the timer waits for the clock");
   check(engine.isAlive(), "the system is alive, waiting for the timer");
@@ -71,10 +74,9 @@ int main(int argc, char** argv) {
   check(!engine.isAlive(), "the process terminated after the timer fired");
   check(engine.getCurrentTime() - startTime >= 3, "the clock reached the trigger time");
 
-  const json& fullLog = monitor.fullLog();
   bool reachedEnd = false;
   bool sawClockTick = false;
-  for (const auto& entry : fullLog) {
+  for (const auto& entry : log) {
     if (entry.contains("event") && entry["event"].value("event", std::string()) == "clocktick") {
       sawClockTick = true;
     }
