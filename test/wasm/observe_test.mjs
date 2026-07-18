@@ -28,24 +28,22 @@ const instanceCsv =
   'Instance_1; Process_1;\n' +
   'Instance_1; Activity_1; x := -2\n';
 
-const engine = new module.Engine();
+const input = new module.Input(modelXml);
+input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
-engine.attachMonitor(monitor);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, null);
+input.delete();
 
 // Collect every entry the callback delivers, in the order it arrives.
 const streamed = [];
 monitor.onNotice((entryJson) => streamed.push(entryJson));
 
-check(!('error' in JSON.parse(engine.loadModel(modelXml))), 'loadModel');
-check(!('error' in JSON.parse(engine.loadInstances(instanceCsv))), 'loadInstances');
-engine.configure(JSON.stringify({ provider: 'static' }));
-
-const snapshot = JSON.parse(engine.start());
-check(!('error' in snapshot), 'start');
+engine.run(0);
+const log = JSON.parse(monitor.drainLog());
 
 check(streamed.length > 0, `the callback fired (${streamed.length} entries)`);
-check(streamed.length === snapshot.log.length,
-  `one callback per log entry (streamed ${streamed.length}, log ${snapshot.log.length})`);
+check(streamed.length === log.length,
+  `one callback per log entry (streamed ${streamed.length}, log ${log.length})`);
 
 // Each streamed entry is a JSON object carrying exactly one of the three notification kinds.
 const kinds = new Set(['token', 'event', 'message']);
@@ -54,25 +52,20 @@ check(parsed.every((entry) => Object.keys(entry).length === 1 && kinds.has(Objec
   'every streamed entry is a single token, event, or message record');
 
 // The stream is exactly the drained log, in order.
-check(JSON.stringify(parsed) === JSON.stringify(snapshot.log),
+check(JSON.stringify(parsed) === JSON.stringify(log),
   'the streamed entries equal the drained log, in order');
 
-// Passing null removes the sink. A fresh run on a new engine with the same monitor, after clearing,
-// delivers no further callbacks even though it records a log.
+// Passing null removes the sink. A fresh run, after clearing, delivers no further callbacks even
+// though it records a log, which the reusable run lets us verify on the same engine.
 monitor.onNotice(null);
 const before = streamed.length;
-const engine2 = new module.Engine();
-engine2.attachMonitor(monitor);
-engine2.loadModel(modelXml);
-engine2.loadInstances(instanceCsv);
-engine2.configure(JSON.stringify({ provider: 'static' }));
-const snapshot2 = JSON.parse(engine2.start());
+engine.run(1);
+const log2 = JSON.parse(monitor.drainLog());
 check(streamed.length === before, 'no callbacks fire after the sink is cleared');
-check(snapshot2.log.length > 0, 'the second run still recorded a log');
+check(log2.length > 0, 'the second run still recorded a log');
 
 monitor.delete();
 engine.delete();
-engine2.delete();
 
 console.error(`streamed ${streamed.length} entries live, matching the drained log`);
 console.error('ALL PASSED (WebAssembly live observation)');

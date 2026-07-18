@@ -26,6 +26,7 @@ set(XERCES_TAG   "v3.2.4" CACHE STRING "xerces-c tag")
 # The bridge library. Its sources are toolchain independent; the include paths and the way the
 # engine is obtained differ between the native build and the WebAssembly build below.
 add_library(bpmnos_wasm STATIC
+  src/Input.cpp
   src/Monitor.cpp
   src/Controller.cpp
   src/Engine.cpp

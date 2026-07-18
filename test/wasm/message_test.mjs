@@ -27,29 +27,26 @@ const instanceCsv =
   'Client1; ClientProcess;\n' +
   'Server1; ServerProcess;\n';
 
-const engine = new module.Engine();
+const input = new module.Input(modelXml);
+const required = JSON.parse(input.requiredLookupTables());
+check(Array.isArray(required) && required.length === 1 && required[0] === 'costs.csv',
+  "requiredLookupTables reports the model's lookup table");
+input.addLookupTable('costs.csv', costsCsv);
+input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller();
-engine.attachMonitor(monitor);
-engine.attachController(controller);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, controller);
+input.delete();
 
-check(!('error' in JSON.parse(engine.loadModel(modelXml))), 'loadModel');
-const required = JSON.parse(engine.requiredLookups());
-check(Array.isArray(required) && required.length === 1 && required[0] === 'costs.csv',
-  "requiredLookups reports the model's lookup table");
-check(!('error' in JSON.parse(engine.loadLookupTable('costs.csv', costsCsv))), 'loadLookupTable');
-check(!('error' in JSON.parse(engine.loadInstances(instanceCsv))), 'loadInstances');
-engine.configure(JSON.stringify({ provider: 'static' }));
+engine.run(0);
+let pending = JSON.parse(controller.pendingDecisions());
+check(pending.length > 0, 'the engine stopped at the message delivery');
 
-let state = JSON.parse(engine.start());
-check(!('error' in state), 'start');
-check(state.pending.length > 0, 'the engine stopped at the message delivery');
-
-const log = [...state.log];
+const log = JSON.parse(monitor.drainLog());
 let delivered = 0;
 let guard = 0;
-while (state.pending.length > 0 && guard++ < 50) {
-  const request = state.pending[0];
+while (pending.length > 0 && guard++ < 50) {
+  const request = pending[0];
   check(request.type === 'messageDelivery', 'the pending decision is a message delivery');
   check(request.candidates.length > 0, 'the delivery offers at least one candidate message');
   const candidate = request.candidates[0];
@@ -62,9 +59,9 @@ while (state.pending.length > 0 && guard++ < 50) {
   };
   check(!('rejected' in JSON.parse(controller.submitDecision(JSON.stringify(decision)))), 'submitDecision accepted');
   delivered += 1;
-  state = JSON.parse(engine.resume());
-  check(!('error' in state), 'resume');
-  log.push(...state.log);
+  engine.resume();
+  pending = JSON.parse(controller.pendingDecisions());
+  log.push(...JSON.parse(monitor.drainLog()));
 }
 
 check(delivered === 1, 'exactly one message was delivered');

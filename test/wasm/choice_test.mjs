@@ -26,27 +26,24 @@ const instanceCsv =
   'Instance_1; Process_1;\n' +
   'Instance_1; Activity_1; x := -2\n';
 
-const engine = new module.Engine();
+const input = new module.Input(modelXml);
+input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller();
-engine.attachMonitor(monitor);
-engine.attachController(controller);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, controller);
+input.delete();
 
-check(!('error' in JSON.parse(engine.loadModel(modelXml))), 'loadModel');
-check(!('error' in JSON.parse(engine.loadInstances(instanceCsv))), 'loadInstances');
-engine.configure(JSON.stringify({ provider: 'static' }));
+engine.run(0);
+let pending = JSON.parse(controller.pendingDecisions());
+check(pending.length > 0, 'the engine stopped at the choice');
 
-let state = JSON.parse(engine.start());
-check(!('error' in state), 'start');
-check(state.pending.length > 0, 'the engine stopped at the choice');
-
-const log = [...state.log];
+const log = JSON.parse(monitor.drainLog());
 let submittedChoice = 0;
 let choiceCount = 0;
 let guard = 0;
-while (state.pending.length > 0 && guard++ < 50) {
-  check(state.pending.every((d) => d.type === 'choice'), 'the only pending decision is a choice');
-  const request = state.pending[0];
+while (pending.length > 0 && guard++ < 50) {
+  check(pending.every((d) => d.type === 'choice'), 'the only pending decision is a choice');
+  const request = pending[0];
   choiceCount += 1;
   const choices = [];
   for (const choice of request.choices) {
@@ -62,12 +59,12 @@ while (state.pending.length > 0 && guard++ < 50) {
     choices,
   };
   check(!('rejected' in JSON.parse(controller.submitDecision(JSON.stringify(decision)))), 'submitDecision accepted');
-  state = JSON.parse(engine.resume());
-  check(!('error' in state), 'resume');
-  log.push(...state.log);
+  engine.resume();
+  pending = JSON.parse(controller.pendingDecisions());
+  log.push(...JSON.parse(monitor.drainLog()));
 }
 
-check(state.pending.length === 0, 'no decision is pending after the choice');
+check(pending.length === 0, 'no decision is pending after the choice');
 check(choiceCount === 1, 'exactly one choice was made');
 check(
   log.some((e) => e.token && e.token.nodeId === 'Activity_1' && e.token.state === 'COMPLETED'

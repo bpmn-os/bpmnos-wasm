@@ -1,11 +1,13 @@
 // The demo's engine worker.
 //
 // The engine's run is a single blocking call, so it runs here in a worker rather than on the page.
-// The worker keeps one engine across three steps so the page can prompt for a model's lookup tables
-// before running: it loads a model and reports which lookup tables it references, accepts each lookup
-// table's CSV, and then runs. During the run a monitor posts each observed entry to the page the moment
-// it is recorded, so the log fills in as execution proceeds. No controller is attached, so the engine
-// runs autonomously under the greedy controller.
+// The worker assembles an input from a model in three steps so the page can prompt for a model's lookup
+// tables before running: it parses a model and reports which lookup tables it references, accepts each
+// lookup table's CSV, and then, once instances are supplied, builds an engine and runs it. During the
+// run a monitor posts each observed entry to the page the moment it is recorded, so the log fills in as
+// execution proceeds. No controller is attached, so the engine runs autonomously under the greedy
+// controller. Because the engine is built once from the input, repeated runs on the same instances
+// reuse the parsed model and only advance the scenario, so each run is the next stochastic sample.
 
 import createBpmnos from './bpmnos.mjs';
 
@@ -13,12 +15,36 @@ const ready = createBpmnos();
 ready.then(() => self.postMessage({ type: 'ready' }));
 
 let Module = null;
+let modelXml = null;
+let lookupTables = {};
 let engine = null;
 let monitor = null;
+let scenarioId = 0;
+let lastInstances = null;
+let entryCount = 0;
 
 function reset() {
   if (monitor) { monitor.delete(); monitor = null; }
   if (engine) { engine.delete(); engine = null; }
+  lastInstances = null;
+}
+
+// Build a fresh engine from the stored model, lookup tables, and the given instances. The input is
+// consumed by construction, so it is assembled and released here each time the instances change.
+function buildEngine(instances) {
+  reset();
+  const input = new Module.Input(modelXml);
+  for (const [name, csv] of Object.entries(lookupTables)) {
+    input.addLookupTable(name, csv);
+  }
+  input.setInstance(instances);
+  monitor = new Module.Monitor();
+  // Each notification is posted the moment the monitor records it, from inside the blocking run.
+  monitor.onNotice((entry) => { self.postMessage({ type: 'entry', entry }); entryCount += 1; });
+  engine = new Module.Engine(input, JSON.stringify({ provider: 'stochastic', seed: 0 }), monitor, null);
+  input.delete();
+  scenarioId = 0;
+  lastInstances = instances;
 }
 
 self.onmessage = async (event) => {
@@ -32,45 +58,43 @@ self.onmessage = async (event) => {
 
   try {
     if (message.type === 'loadModel') {
-      // A new model starts fresh; discard any engine from a previous model.
+      // A new model starts fresh; discard any engine from a previous model, then report the lookup
+      // tables the model references so the page can prompt for exactly those.
       reset();
-      engine = new Module.Engine();
-      monitor = new Module.Monitor();
-      engine.attachMonitor(monitor);
-      const result = JSON.parse(engine.loadModel(message.model));
-      if (result.error) throw new Error(result.error);
-      const required = JSON.parse(engine.requiredLookups());
+      modelXml = message.model;
+      lookupTables = {};
+      const probe = new Module.Input(modelXml);
+      const required = JSON.parse(probe.requiredLookupTables());
+      probe.delete();
       self.postMessage({ type: 'lookups', required });
       return;
     }
 
     if (message.type === 'lookup') {
-      const result = JSON.parse(engine.loadLookupTable(message.name, message.csv));
-      if (result.error) throw new Error(result.error);
+      lookupTables[message.name] = message.csv;
       return;
     }
 
     if (message.type === 'run') {
-      let result = JSON.parse(engine.loadInstances(message.instances));
-      if (result.error) throw new Error(result.error);
-      engine.configure(JSON.stringify({ provider: 'stochastic', seed: message.seed }));
-      // Each notification is posted the moment the monitor records it, from inside the blocking run.
-      monitor.onNotice((entry) => self.postMessage({ type: 'entry', entry }));
+      // Rebuild only when the instances change; otherwise reuse the built engine and advance the
+      // scenario, so the parsed model is not touched again.
+      if (!engine || message.instances !== lastInstances) {
+        buildEngine(message.instances);
+      } else {
+        scenarioId += 1;
+      }
 
-      // Time only the engine's run, before the snapshot JSON is parsed back on this side.
+      entryCount = 0;
+      // Time only the engine's run.
       const startedAt = performance.now();
-      const raw = engine.start();
+      engine.run(scenarioId);
       const engineMs = performance.now() - startedAt;
-      const snapshot = JSON.parse(raw);
-      if (snapshot.error) throw new Error(snapshot.error);
 
       self.postMessage({
         type: 'done',
-        outcome: snapshot.outcome,
-        objective: snapshot.objective,
-        time: snapshot.time,
-        count: snapshot.log.length,
-        seed: message.seed,
+        time: engine.getCurrentTime(),
+        count: entryCount,
+        scenarioId,
         engineMs,
       });
       return;

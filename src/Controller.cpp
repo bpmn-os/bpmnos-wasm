@@ -137,7 +137,16 @@ void Controller::connect(Execution::Mediator* mediator) {
   Execution::Controller::connect(mediator);
 }
 
-json Controller::pendingDecisions(const Execution::SystemState* systemState) {
+void Controller::notice(const Execution::Observable* observable) {
+  // The engine subscribes every controller to the system state and announces each freshly installed one.
+  // Caching it here lets pendingDecisions read it without the caller passing it in.
+  if (observable->getObservableType() == Execution::Observable::Type::SystemState) {
+    systemState = static_cast<const Execution::SystemState*>(observable);
+  }
+  Execution::Controller::notice(observable);
+}
+
+json Controller::pendingDecisions() {
   json arr = json::array();
   if (!systemState) {
     return arr;

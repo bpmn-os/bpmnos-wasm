@@ -1,22 +1,24 @@
 // JavaScript bindings for the WebAssembly build.
 //
-// The bridge exposes three classes to JavaScript through embind: the engine, the controller,
-// and the monitor. The caller constructs a monitor and, when it intends to supply decisions, a
-// controller, attaches them to an engine, and drives execution. Every value that the C++ side
-// expresses as JSON crosses the boundary as a JSON string, so the binding neither marshals nor
-// depends on any particular JSON representation on the JavaScript side.
+// The bridge exposes four classes to JavaScript through embind: the input, the engine, the
+// controller, and the monitor. The caller assembles an input, constructs a monitor and, when it
+// intends to supply decisions, a controller, and constructs an engine from the input. Every value
+// that the C++ side expresses as JSON crosses the boundary as a JSON string, so the binding neither
+// marshals nor depends on any particular JSON representation on the JavaScript side.
 //
 // This translation unit belongs to the WebAssembly build only. It lives under src/wasm and is
 // compiled into the module by the Emscripten target, so it is never part of the native build.
 
 #include <clocale>
 #include <string>
+#include <utility>
 
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
 #include "Controller.h"
 #include "Engine.h"
+#include "Input.h"
 #include "Monitor.h"
 
 using namespace emscripten;
@@ -25,88 +27,46 @@ using namespace BPMNOS::WASM;
 namespace {
 
 /**
- * @brief Binds Engine::loadModel, loading the BPMN model XML.
+ * @brief Binds Input::requiredLookupTables, reporting the model's lookup table source names.
  *
- * @param engine The engine.
- * @param bpmnXml The BPMN model XML.
- * @return The JSON result as a string.
- */
-std::string engineLoadModel(Engine& engine, const std::string& bpmnXml) {
-  return engine.loadModel(bpmnXml).dump();
-}
-
-/**
- * @brief Binds Engine::requiredLookups, reporting the model's lookup table source names.
- *
- * @param engine The engine.
+ * @param input The input.
  * @return The JSON array of lookup table source names as a string.
  */
-std::string engineRequiredLookups(Engine& engine) {
-  return engine.requiredLookups().dump();
+std::string inputRequiredLookupTables(Input& input) {
+  return input.requiredLookupTables().dump();
 }
 
 /**
- * @brief Binds Engine::loadLookupTable, loading one lookup table's content.
+ * @brief Constructs an Engine, since embind cannot marshal a BPMNOS::Model::Input, which owns the parsed
+ * tree. It parses the configuration JSON, moves the assembled input out of the JavaScript-held Input, and
+ * hands it to the engine. The Input is empty afterwards, so one Input builds one Engine.
  *
- * @param engine The engine.
- * @param name The lookup table source name.
- * @param csv The lookup table CSV content.
- * @return The JSON result as a string.
+ * @param input The assembled input, consumed here.
+ * @param configJson The configuration as a JSON string: {"provider": ..., "seed": n}, each field optional.
+ * @param monitor The monitor observing every run.
+ * @param controller The controller supplying decisions, or null to run autonomously.
+ * @return The constructed engine, owned by embind.
  */
-std::string engineLoadLookupTable(Engine& engine, const std::string& name, const std::string& csv) {
-  return engine.loadLookupTable(name, csv).dump();
+Engine* createEngine(Input& input, const std::string& configJson, Monitor* monitor, Controller* controller) {
+  json parsed = json::parse(configJson);
+  Engine::Config config;
+  if (parsed.contains("provider")) {
+    config.provider = parsed["provider"].get<std::string>();
+  }
+  if (parsed.contains("seed")) {
+    config.seed = parsed["seed"].get<unsigned int>();
+  }
+  return new Engine(input.release(), std::move(config), monitor, controller);
 }
 
 /**
- * @brief Binds Engine::loadInstances, loading the instance data.
+ * @brief Binds Controller::pendingDecisions, reporting the decisions left for the caller.
  *
- * @param engine The engine.
- * @param csv The instance CSV content.
- * @return The JSON result as a string.
+ * @param controller The controller.
+ * @return The JSON array of pending decisions as a string.
  */
-std::string engineLoadInstances(Engine& engine, const std::string& csv) {
-  return engine.loadInstances(csv).dump();
-}
-
-/**
- * @brief Binds Engine::configure, parsing the configuration JSON string.
- *
- * @param engine The engine.
- * @param config The configuration as a JSON string.
- * @return The JSON result as a string.
- */
-std::string engineConfigure(Engine& engine, const std::string& config) {
-  return engine.configure(json::parse(config)).dump();
-}
-
-/**
- * @brief Binds Engine::start, running the engine from the start.
- *
- * @param engine The engine.
- * @return The snapshot as a JSON string.
- */
-std::string engineStart(Engine& engine) {
-  return engine.start().dump();
-}
-
-/**
- * @brief Binds Engine::resume, continuing a started run.
- *
- * @param engine The engine.
- * @return The snapshot as a JSON string.
- */
-std::string engineResume(Engine& engine) {
-  return engine.resume().dump();
-}
-
-/**
- * @brief Binds Engine::snapshot, returning the current snapshot without advancing.
- *
- * @param engine The engine.
- * @return The snapshot as a JSON string.
- */
-std::string engineSnapshot(Engine& engine) {
-  return engine.snapshot().dump();
+std::string controllerPendingDecisions(Controller& controller) {
+  return controller.pendingDecisions().dump();
 }
 
 /**
@@ -191,20 +151,21 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
 
   class_<Controller>("Controller")
     .constructor<>()
+    .function("pendingDecisions", &controllerPendingDecisions)
     .function("submitDecision", &controllerSubmitDecision)
     .function("submitClockTick", &controllerSubmitClockTick)
     .function("submitTermination", &controllerSubmitTermination);
 
+  class_<Input>("Input")
+    .constructor<std::string>()
+    .function("requiredLookupTables", &inputRequiredLookupTables)
+    .function("addLookupTable", &Input::addLookupTable)
+    .function("setInstance", &Input::setInstance);
+
   class_<Engine>("Engine")
-    .constructor<>()
-    .function("attachMonitor", &Engine::attachMonitor, allow_raw_pointers())
-    .function("attachController", &Engine::attachController, allow_raw_pointers())
-    .function("loadModel", &engineLoadModel)
-    .function("requiredLookups", &engineRequiredLookups)
-    .function("loadLookupTable", &engineLoadLookupTable)
-    .function("loadInstances", &engineLoadInstances)
-    .function("configure", &engineConfigure)
-    .function("start", &engineStart)
-    .function("resume", &engineResume)
-    .function("snapshot", &engineSnapshot);
+    .constructor(&createEngine, allow_raw_pointers())
+    .function("run", &Engine::run)
+    .function("resume", &Engine::resume)
+    .function("isAlive", &Engine::isAlive)
+    .function("getCurrentTime", &Engine::getCurrentTime);
 }

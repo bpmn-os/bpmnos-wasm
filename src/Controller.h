@@ -46,6 +46,15 @@ public:
   void connect(Execution::Mediator* mediator) override;
 
   /**
+   * @brief Records the current system state as the engine installs it, then forwards the notification.
+   * Caching the state lets pendingDecisions read it without the caller holding it, exactly as the
+   * engine's own candidate collections do.
+   *
+   * @param observable The observed notification.
+   */
+  void notice(const Execution::Observable* observable) override;
+
+  /**
    * @brief Returns the next event to the engine: an auto resolved decision while one is feasible, then a
    * caller supplied decision, clock tick, or termination, and a null pointer when none remains.
    *
@@ -58,12 +67,11 @@ public:
    * @brief Enumerates the decisions the caller must resolve, each carrying its kind and its token's
    * instance and node. A choice additionally carries, for every choice of the decision task, either the
    * allowed enumeration or the lower and upper bounds. A message delivery carries its candidate messages,
-   * each with its origin and sender.
+   * each with its origin and sender. It reads the system state cached from the latest notification.
    *
-   * @param systemState The current system state.
    * @return A JSON array of the pending decisions left for the caller.
    */
-  json pendingDecisions(const Execution::SystemState* systemState);
+  json pendingDecisions();
 
   /**
    * @brief Accepts a decision from the caller and queues it for the next advance. The decision is
@@ -105,6 +113,7 @@ private:
   std::unique_ptr<Execution::Evaluator> evaluator;                         ///< guides the auto dispatchers
   std::vector<std::unique_ptr<Execution::EventDispatcher>> autoDispatchers; ///< tried before the caller queue
   std::deque<json> queue;                                                  ///< caller inputs awaiting dispatch
+  const Execution::SystemState* systemState = nullptr;                     ///< cached from the latest notice
 };
 
 } // namespace BPMNOS::WASM

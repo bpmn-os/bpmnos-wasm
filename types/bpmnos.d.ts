@@ -1,37 +1,37 @@
 // Type declarations for the bpmnos-wasm module.
 //
-// The module exposes three classes bound through embind. Every value that the engine expresses as
-// JSON crosses the boundary as a JSON string, so each method below takes or returns a string that
-// the caller parses or produces. The JSON shapes are described in the project README and roadmap.
-// Instances are C++ objects; call delete on them when finished to release their memory.
+// The module exposes four classes bound through embind: Input, Engine, Controller, and Monitor. Every
+// value that the engine expresses as JSON crosses the boundary as a JSON string, so each method below
+// that carries JSON takes or returns a string that the caller parses or produces. The JSON shapes are
+// described in the project README and roadmap. Instances are C++ objects; call delete on them when
+// finished to release their memory.
+
+export interface Input {
+  /**
+   * Return a JSON array string of the lookup table source names the model references (the keys to
+   * supply to addLookupTable), so a caller can prompt for exactly those.
+   */
+  requiredLookupTables(): string;
+  /** Provide one lookup table by its source name. */
+  addLookupTable(name: string, csv: string): void;
+  /** Provide the instance CSV. */
+  setInstance(csv: string): void;
+  delete(): void;
+}
 
 export interface Engine {
-  /** Attach a monitor before starting; the caller owns it and keeps it alive. */
-  attachMonitor(monitor: Monitor): void;
-  /** Attach a controller to supply decisions; omit it to run autonomously under the greedy controller. */
-  attachController(controller: Controller): void;
-
-  /** Load the BPMN model XML. Returns {"ok":true} or {"error":message}. */
-  loadModel(bpmnXml: string): string;
   /**
-   * After loadModel, returns a JSON array string of the lookup table source names the model
-   * references (the keys to supply to loadLookupTable), so a caller can prompt for exactly those.
+   * Draw the named scenario and run from the beginning, mirroring the execution engine's run. A
+   * stochastic provider samples the base seed plus this index, so a different scenario id is a
+   * different sample of the same model.
    */
-  requiredLookups(): string;
-  /** Load one lookup table by its source name. Returns {"ok":true} or {"error":message}. */
-  loadLookupTable(name: string, csv: string): string;
-  /** Load the instance CSV. Returns {"ok":true} or {"error":message}. */
-  loadInstances(csv: string): string;
-  /** Configure the run, for example {"provider":"static"}. Returns {"ok":true} or {"error":message}. */
-  configure(configJson: string): string;
-
-  /** Build and run. Returns a snapshot, or {"error":message}. */
-  start(): string;
-  /** Continue an interactive run after submitting a decision. Returns a snapshot. */
-  resume(): string;
-  /** Return the current snapshot without advancing. */
-  snapshot(): string;
-
+  run(scenarioId: number): void;
+  /** Continue a run, mirroring the execution engine's resume. */
+  resume(): void;
+  /** Report whether the system state is still alive; a run is done once this is false. */
+  isAlive(): boolean;
+  /** Report the current simulated time. */
+  getCurrentTime(): number;
   delete(): void;
 }
 
@@ -50,6 +50,13 @@ export interface Monitor {
 
 export interface Controller {
   /**
+   * Return the decisions left for the caller as a JSON array string, each carrying its kind and its
+   * token's instance and node. A choice additionally carries, per choice of the decision task, either
+   * the allowed enumeration or the lower and upper bounds; a message delivery carries its candidate
+   * messages, each with its origin and sender.
+   */
+  pendingDecisions(): string;
+  /**
    * Submit a decision the caller must resolve, identified by its token's instance and node. The
    * decision is {"type":"entry|exit|choice|messageDelivery","instanceId":s,"nodeId":s,
    * "status":[...]?,"choices":[...]?,"origin":s?,"sender":s?}, where a choice carries one value per
@@ -66,7 +73,14 @@ export interface Controller {
 }
 
 export interface BpmnosModule {
-  Engine: { new (): Engine };
+  /** Parse a BPMN model XML into an input the engine is built from. */
+  Input: { new (bpmnXml: string): Input };
+  /**
+   * Build an engine from an input, a configuration JSON string (for example {"provider":"static"} or
+   * {"provider":"stochastic","seed":1}), a monitor, and a controller or null to run autonomously. The
+   * input is consumed, so one input builds one engine.
+   */
+  Engine: { new (input: Input, configJson: string, monitor: Monitor, controller: Controller | null): Engine };
   Monitor: { new (): Monitor };
   Controller: { new (): Controller };
 }

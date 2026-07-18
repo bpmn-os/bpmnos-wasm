@@ -33,9 +33,9 @@
   <h1>BPMNOS greedy run</h1>
   <p>Choose a BPMN model. If it references lookup tables, the page asks for each as a CSV. Then choose
      an instance CSV and run. Execution is driven by the engine's greedy controller with the guided
-     evaluator over the stochastic data provider, seeded afresh on each run, so repeated runs may
-     differ. The run happens in a worker, and each entry appears in the log below the moment the
-     monitor observes it.</p>
+     evaluator over the stochastic data provider. The engine is built once from the model and instances,
+     so each run advances to the next scenario and repeated runs may differ. The run happens in a worker,
+     and each entry appears in the log below the moment the monitor observes it.</p>
 
   <div class="controls">
     <label><span>BPMN model</span><input type="file" id="model" accept=".bpmn,.xml"></label>
@@ -57,14 +57,14 @@
 
     let moduleReady = false;
     let modelLoaded = false;
-    let requiredLookups = [];
+    let requiredLookupTables = [];
     const providedLookups = new Set();
     let count = 0;
     let runStartedAt = 0;
 
     function updateRunEnabled() {
       const instanceChosen = $('instances').files.length > 0;
-      const lookupsReady = requiredLookups.every((source) => providedLookups.has(source));
+      const lookupsReady = requiredLookupTables.every((source) => providedLookups.has(source));
       $('run').disabled = !(moduleReady && modelLoaded && lookupsReady && instanceChosen);
     }
 
@@ -133,11 +133,11 @@
         updateRunEnabled();
       } else if (message.type === 'lookups') {
         modelLoaded = true;
-        requiredLookups = message.required;
+        requiredLookupTables = message.required;
         providedLookups.clear();
-        renderLookupInputs(requiredLookups);
-        $('status').textContent = requiredLookups.length
-          ? 'model loaded; provide ' + requiredLookups.length + ' lookup table(s), then an instance CSV'
+        renderLookupInputs(requiredLookupTables);
+        $('status').textContent = requiredLookupTables.length
+          ? 'model loaded; provide ' + requiredLookupTables.length + ' lookup table(s), then an instance CSV'
           : 'model loaded; choose an instance CSV and run';
         updateRunEnabled();
       } else if (message.type === 'entry') {
@@ -147,11 +147,9 @@
         // entry is painted; this duration is therefore the time until the display is complete.
         const displayMs = performance.now() - runStartedAt;
         $('status').textContent =
-          'outcome: ' + message.outcome +
-          '\nobjective: ' + message.objective +
-          '\nfinal time: ' + message.time +
+          'final time: ' + message.time +
           '\nlog entries: ' + count +
-          '\nseed: ' + message.seed +
+          '\nscenario: ' + message.scenarioId +
           '\nengine time: ' + (message.engineMs / 1000).toFixed(1) + ' s' +
           '\ntime to full display: ' + (displayMs / 1000).toFixed(1) + ' s';
         updateRunEnabled();
@@ -165,7 +163,7 @@
     $('model').addEventListener('change', async () => {
       const file = $('model').files[0];
       modelLoaded = false;
-      requiredLookups = [];
+      requiredLookupTables = [];
       providedLookups.clear();
       $('lookups').replaceChildren();
       // A model change invalidates the previously chosen instance and lookup files. In the
@@ -193,9 +191,9 @@
       clearLog();
       $('status').textContent = 'running...';
       $('run').disabled = true;
-      // The stochastic provider with a fresh random seed makes repeated runs differ.
-      const seed = Math.floor(Math.random() * 0x100000000);
-      worker.postMessage({ type: 'run', instances: await instanceFile.text(), seed });
+      // The engine is built once from the model and instances; each run advances to the next scenario
+      // of the stochastic provider, so repeated runs on the same instances may differ.
+      worker.postMessage({ type: 'run', instances: await instanceFile.text() });
     });
   </script>
 </body>
