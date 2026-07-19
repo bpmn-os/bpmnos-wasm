@@ -180,33 +180,44 @@ json Controller::pendingDecisions() {
   return arr;
 }
 
-json Controller::submitDecision(const json& decision) {
-  if (!decision.contains("type")) {
-    return json{ {"rejected", "decision requires type"} };
+json Controller::enqueueEntryDecision(const json& decision) {
+  return enqueueTokenDecision("entry", decision);
+}
+
+json Controller::enqueueExitDecision(const json& decision) {
+  return enqueueTokenDecision("exit", decision);
+}
+
+json Controller::enqueueChoiceDecision(const json& decision) {
+  if (!decision.contains("choices")) {
+    return json{ {"rejected", "choice requires choices"} };
   }
-  std::string type = decision["type"].get<std::string>();
-  if (type != "entry" && type != "exit" && type != "choice" && type != "messageDelivery") {
-    return json{ {"rejected", "unknown type: " + type} };
+  return enqueueTokenDecision("choice", decision);
+}
+
+json Controller::enqueueMessageDeliveryDecision(const json& decision) {
+  if (!decision.contains("origin") || !decision.contains("sender")) {
+    return json{ {"rejected", "messageDelivery requires origin and sender"} };
   }
+  return enqueueTokenDecision("messageDelivery", decision);
+}
+
+json Controller::enqueueTokenDecision(const std::string& type, json decision) {
   if (!decision.contains("instanceId") || !decision.contains("nodeId")) {
     return json{ {"rejected", "decision requires instanceId and nodeId"} };
   }
-  if (type == "choice" && !decision.contains("choices")) {
-    return json{ {"rejected", "choice requires choices"} };
-  }
-  if (type == "messageDelivery" && (!decision.contains("origin") || !decision.contains("sender"))) {
-    return json{ {"rejected", "messageDelivery requires origin and sender"} };
-  }
-  queue.push_back(decision);
+  // Tag the queued input with its kind so createEvent builds the right event when the engine fetches.
+  decision["type"] = type;
+  queue.push_back(std::move(decision));
   return json{ {"queued", true} };
 }
 
-json Controller::submitClockTick() {
+json Controller::enqueueClockTick() {
   queue.push_back(json{ {"type", "clockTick"} });
   return json{ {"queued", "clockTick"} };
 }
 
-json Controller::submitTermination() {
+json Controller::enqueueTermination() {
   queue.push_back(json{ {"type", "termination"} });
   return json{ {"queued", "termination"} };
 }
@@ -231,7 +242,7 @@ std::shared_ptr<Execution::Event> Controller::dispatchEvent(const Execution::Sys
     json decision = queue.front();
     queue.pop_front();
     std::string error;
-    if (auto event = makeUserEvent(decision, systemState, error)) {
+    if (auto event = createEvent(decision, systemState, error)) {
       return event;
     }
     // The token was withdrawn or the message consumed between submission and dispatch; try the next.
@@ -239,7 +250,7 @@ std::shared_ptr<Execution::Event> Controller::dispatchEvent(const Execution::Sys
   return nullptr;
 }
 
-std::shared_ptr<Execution::Event> Controller::makeUserEvent(
+std::shared_ptr<Execution::Event> Controller::createEvent(
   const json& decision, const Execution::SystemState* systemState, std::string& error) {
   std::string type = decision.value("type", std::string());
   if (type == "clockTick") {

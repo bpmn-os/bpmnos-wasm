@@ -70,34 +70,67 @@ std::string controllerPendingDecisions(Controller& controller) {
 }
 
 /**
- * @brief Binds Controller::submitDecision, parsing the decision JSON string.
+ * @brief Binds Controller::enqueueEntryDecision, parsing the decision JSON string.
  *
  * @param controller The controller.
  * @param decision The decision as a JSON string.
  * @return The JSON result as a string.
  */
-std::string controllerSubmitDecision(Controller& controller, const std::string& decision) {
-  return controller.submitDecision(json::parse(decision)).dump();
+std::string controllerEnqueueEntryDecision(Controller& controller, const std::string& decision) {
+  return controller.enqueueEntryDecision(json::parse(decision)).dump();
 }
 
 /**
- * @brief Binds Controller::submitClockTick, queuing a clock tick.
+ * @brief Binds Controller::enqueueExitDecision, parsing the decision JSON string.
+ *
+ * @param controller The controller.
+ * @param decision The decision as a JSON string.
+ * @return The JSON result as a string.
+ */
+std::string controllerEnqueueExitDecision(Controller& controller, const std::string& decision) {
+  return controller.enqueueExitDecision(json::parse(decision)).dump();
+}
+
+/**
+ * @brief Binds Controller::enqueueChoiceDecision, parsing the decision JSON string.
+ *
+ * @param controller The controller.
+ * @param decision The decision as a JSON string.
+ * @return The JSON result as a string.
+ */
+std::string controllerEnqueueChoiceDecision(Controller& controller, const std::string& decision) {
+  return controller.enqueueChoiceDecision(json::parse(decision)).dump();
+}
+
+/**
+ * @brief Binds Controller::enqueueMessageDeliveryDecision, parsing the decision JSON string.
+ *
+ * @param controller The controller.
+ * @param decision The decision as a JSON string.
+ * @return The JSON result as a string.
+ */
+std::string controllerEnqueueMessageDeliveryDecision(Controller& controller, const std::string& decision) {
+  return controller.enqueueMessageDeliveryDecision(json::parse(decision)).dump();
+}
+
+/**
+ * @brief Binds Controller::enqueueClockTick, queuing a clock tick.
  *
  * @param controller The controller.
  * @return The JSON result as a string.
  */
-std::string controllerSubmitClockTick(Controller& controller) {
-  return controller.submitClockTick().dump();
+std::string controllerEnqueueClockTick(Controller& controller) {
+  return controller.enqueueClockTick().dump();
 }
 
 /**
- * @brief Binds Controller::submitTermination, queuing a termination.
+ * @brief Binds Controller::enqueueTermination, queuing a termination.
  *
  * @param controller The controller.
  * @return The JSON result as a string.
  */
-std::string controllerSubmitTermination(Controller& controller) {
-  return controller.submitTermination().dump();
+std::string controllerEnqueueTermination(Controller& controller) {
+  return controller.enqueueTermination().dump();
 }
 
 /**
@@ -138,9 +171,12 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
   class_<Controller>("Controller")
     .constructor<>()
     .function("pendingDecisions", &controllerPendingDecisions)
-    .function("submitDecision", &controllerSubmitDecision)
-    .function("submitClockTick", &controllerSubmitClockTick)
-    .function("submitTermination", &controllerSubmitTermination);
+    .function("enqueueEntryDecision", &controllerEnqueueEntryDecision)
+    .function("enqueueExitDecision", &controllerEnqueueExitDecision)
+    .function("enqueueChoiceDecision", &controllerEnqueueChoiceDecision)
+    .function("enqueueMessageDeliveryDecision", &controllerEnqueueMessageDeliveryDecision)
+    .function("enqueueClockTick", &controllerEnqueueClockTick)
+    .function("enqueueTermination", &controllerEnqueueTermination);
 
   class_<Input>("Input")
     .constructor<std::string>()

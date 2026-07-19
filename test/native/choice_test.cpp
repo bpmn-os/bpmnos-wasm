@@ -80,12 +80,11 @@ int main(int argc, char** argv) {
       submittedChoice = value;
     }
     json decision = {
-      {"type", "choice"},
       {"instanceId", choiceRequest["instanceId"]},
       {"nodeId", choiceRequest["nodeId"]},
       {"choices", choices},
     };
-    check(!controller.submitDecision(decision).contains("rejected"), "submitDecision accepted");
+    check(!controller.enqueueChoiceDecision(decision).contains("rejected"), "enqueueChoiceDecision accepted");
     engine.resume();
     pending = controller.pendingDecisions();
   }

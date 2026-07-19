@@ -58,18 +58,34 @@ export interface Controller {
    */
   pendingDecisions(): string;
   /**
-   * Submit a decision the caller must resolve, identified by its token's instance and node. The
-   * decision is {"type":"entry|exit|choice|messageDelivery","instanceId":s,"nodeId":s,
-   * "status":[...]?,"choices":[...]?,"origin":s?,"sender":s?}, where a choice carries one value per
-   * choice of the decision task and a message delivery names the chosen message by its origin and
-   * sender. Returns {"queued":true} or {"rejected":reason}. The engine auto-resolves the unambiguous
-   * entries, exits, and directly addressed message deliveries itself, so those are not submitted.
+   * Queue the entry of a waiting token, identified by its instance and node, for the next resume. The
+   * decision is {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or
+   * {"rejected":reason}. The engine auto-resolves feasible non-sequential entries itself.
    */
-  submitDecision(decisionJson: string): string;
+  enqueueEntryDecision(decisionJson: string): string;
+  /**
+   * Queue the exit of a waiting token for the next resume. The decision is
+   * {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or {"rejected":reason}. The
+   * engine auto-resolves feasible exits itself.
+   */
+  enqueueExitDecision(decisionJson: string): string;
+  /**
+   * Queue a choice for a waiting token for the next resume. The decision is
+   * {"instanceId":s,"nodeId":s,"choices":[...]}, one value per choice of the decision task. Returns
+   * {"queued":true} or {"rejected":reason}.
+   */
+  enqueueChoiceDecision(decisionJson: string): string;
+  /**
+   * Queue the delivery of a message to a waiting token for the next resume. The decision is
+   * {"instanceId":s,"nodeId":s,"origin":s,"sender":s}, naming the chosen message by its origin and its
+   * sender from the header. Returns {"queued":true} or {"rejected":reason}. The engine auto-resolves
+   * directly addressed message deliveries itself.
+   */
+  enqueueMessageDeliveryDecision(decisionJson: string): string;
   /** Queue a clock tick that advances simulated time by one unit at the next resume. */
-  submitClockTick(): string;
+  enqueueClockTick(): string;
   /** Queue a termination event that ends execution at the next resume. */
-  submitTermination(): string;
+  enqueueTermination(): string;
   delete(): void;
 }
 

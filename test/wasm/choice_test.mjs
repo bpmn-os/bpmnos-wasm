@@ -60,7 +60,7 @@ while (pending.length > 0 && guard++ < 50) {
     nodeId: request.nodeId,
     choices,
   };
-  check(!('rejected' in JSON.parse(controller.submitDecision(JSON.stringify(decision)))), 'submitDecision accepted');
+  check(!('rejected' in JSON.parse(controller.enqueueDecision(JSON.stringify(decision)))), 'enqueueDecision accepted');
   engine.resume();
   pending = JSON.parse(controller.pendingDecisions());
 }

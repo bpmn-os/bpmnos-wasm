@@ -45,7 +45,7 @@ while (pending.length > 0 && guard++ < 50) {
   const request = pending[0];
   check(request.type === 'entry', 'the pending decision is a sequential entry');
   const decision = { type: 'entry', instanceId: request.instanceId, nodeId: request.nodeId };
-  check(!('rejected' in JSON.parse(controller.submitDecision(JSON.stringify(decision)))), 'submitDecision accepted');
+  check(!('rejected' in JSON.parse(controller.enqueueDecision(JSON.stringify(decision)))), 'enqueueDecision accepted');
   entered += 1;
   engine.resume();
   pending = JSON.parse(controller.pendingDecisions());

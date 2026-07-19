@@ -65,11 +65,10 @@ int main(int argc, char** argv) {
     const auto& entryRequest = pending[0];
     check(entryRequest["type"] == "entry", "the pending decision is a sequential entry");
     json decision = {
-      {"type", "entry"},
       {"instanceId", entryRequest["instanceId"]},
       {"nodeId", entryRequest["nodeId"]},
     };
-    check(!controller.submitDecision(decision).contains("rejected"), "submitDecision accepted");
+    check(!controller.enqueueEntryDecision(decision).contains("rejected"), "enqueueEntryDecision accepted");
     ++entered;
     engine.resume();
     pending = controller.pendingDecisions();

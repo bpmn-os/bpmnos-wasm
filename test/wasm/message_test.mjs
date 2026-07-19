@@ -59,7 +59,7 @@ while (pending.length > 0 && guard++ < 50) {
     origin: candidate.origin,
     sender: candidate.sender,
   };
-  check(!('rejected' in JSON.parse(controller.submitDecision(JSON.stringify(decision)))), 'submitDecision accepted');
+  check(!('rejected' in JSON.parse(controller.enqueueDecision(JSON.stringify(decision)))), 'enqueueDecision accepted');
   delivered += 1;
   engine.resume();
   pending = JSON.parse(controller.pendingDecisions());

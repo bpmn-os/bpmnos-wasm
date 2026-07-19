@@ -75,13 +75,13 @@ int main(int argc, char** argv) {
     check(!request["candidates"].empty(), "the delivery offers at least one candidate message");
     const auto& candidate = request["candidates"][0];
     json decision = {
-      {"type", "messageDelivery"},
       {"instanceId", request["instanceId"]},
       {"nodeId", request["nodeId"]},
       {"origin", candidate["origin"]},
       {"sender", candidate["sender"]},
     };
-    check(!controller.submitDecision(decision).contains("rejected"), "submitDecision accepted");
+    check(!controller.enqueueMessageDeliveryDecision(decision).contains("rejected"),
+          "enqueueMessageDeliveryDecision accepted");
     ++delivered;
     engine.resume();
     pending = controller.pendingDecisions();

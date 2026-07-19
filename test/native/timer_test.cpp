@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
   int ticks = 0;
   int guard = 0;
   while (engine.isAlive() && guard++ < 20) {
-    controller.submitClockTick();
+    controller.enqueueClockTick();
     double previousTime = engine.getCurrentTime();
     engine.resume();
     check(engine.getCurrentTime() == previousTime + 1, "a clock tick advances time by one");
