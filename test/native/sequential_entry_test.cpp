@@ -3,12 +3,14 @@
 // The children of a sequential ad-hoc subprocess are entered one at a time, and their entry is the
 // decision the caller makes; every other entry, including the entry of the subprocess itself, is
 // resolved automatically. This drives the fixture whose subprocess AdHocSubProcess_1 holds two
-// activities and checks that the engine stops offering each child's entry, that submitting it enters
+// activities and checks that the engine stops offering each child's entry, that enqueuing it enters
 // the child, and that once both children have been entered they and the subprocess complete.
 
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 
@@ -18,6 +20,7 @@
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
+using namespace BPMNOS;
 using json = nlohmann::ordered_json;
 
 static std::string readFile(const std::string& path) {
@@ -56,24 +59,30 @@ int main(int argc, char** argv) {
   monitor.addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
-  json pending = controller.pendingDecisions();
-  check(!pending.empty(), "the engine stopped at a sequential entry");
+
+  // Every other entry is resolved automatically, so the only pending decision is the sequential entry.
+  auto findEntryRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
+    for (const auto& weak : controller.getPendingRequests()) {
+      auto request = weak.lock();
+      if (request && request->type == Execution::Observable::Type::EntryRequest) {
+        return request;
+      }
+    }
+    return nullptr;
+  };
+
+  auto request = findEntryRequest();
+  check(request != nullptr, "the engine stopped at a sequential entry");
 
   int entered = 0;
   int guard = 0;
-  while (!pending.empty() && guard++ < 50) {
-    const auto& entryRequest = pending[0];
-    check(entryRequest["type"] == "entry", "the pending decision is a sequential entry");
-    json decision = {
-      {"instanceId", entryRequest["instanceId"]},
-      {"nodeId", entryRequest["nodeId"]},
-    };
-    check(!controller.enqueueEntryDecision(decision).contains("rejected"), "enqueueEntryDecision accepted");
+  while (request && guard++ < 50) {
+    check(controller.enqueueEntryDecision(request, std::nullopt).has_value(), "enqueueEntryDecision accepted");
     ++entered;
     engine.resume();
-    pending = controller.pendingDecisions();
+    request = findEntryRequest();
   }
-  check(pending.empty(), "no decision is pending after the sequential entries");
+  check(request == nullptr, "no decision is pending after the sequential entries");
   check(entered == 2, "both ad-hoc children were entered");
 
   bool completedFirst = false;

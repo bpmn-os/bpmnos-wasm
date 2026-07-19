@@ -37,10 +37,10 @@ const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
 engine.run(0);
-let pending = JSON.parse(controller.pendingDecisions());
+let pending = JSON.parse(controller.getPendingDecisions());
 check(pending.length > 0, 'the engine stopped at the choice');
 
-let submittedChoice = 0;
+let enqueuedChoice = 0;
 let choiceCount = 0;
 let guard = 0;
 while (pending.length > 0 && guard++ < 50) {
@@ -48,28 +48,28 @@ while (pending.length > 0 && guard++ < 50) {
   const request = pending[0];
   choiceCount += 1;
   const choices = [];
-  for (const choice of request.choices) {
+  for (const choice of JSON.parse(controller.getChoiceCandidates(request.instanceId, request.nodeId))) {
     check(Array.isArray(choice.enumeration) && choice.enumeration.length > 0,
       'the choice offers an enumeration of allowed values');
-    submittedChoice = choice.enumeration[0];
-    choices.push(submittedChoice);
+    enqueuedChoice = choice.enumeration[0];
+    choices.push(enqueuedChoice);
   }
   const decision = {
-    type: 'choice',
     instanceId: request.instanceId,
     nodeId: request.nodeId,
     choices,
   };
-  check(!('rejected' in JSON.parse(controller.enqueueDecision(JSON.stringify(decision)))), 'enqueueDecision accepted');
+  check(!('rejected' in JSON.parse(controller.enqueueChoiceDecision(JSON.stringify(decision)))),
+    'enqueueChoiceDecision accepted');
   engine.resume();
-  pending = JSON.parse(controller.pendingDecisions());
+  pending = JSON.parse(controller.getPendingDecisions());
 }
 
 check(pending.length === 0, 'no decision is pending after the choice');
 check(choiceCount === 1, 'exactly one choice was made');
 check(
   log.some((e) => e.token && e.token.nodeId === 'Activity_1' && e.token.state === 'COMPLETED'
-    && e.token.status && e.token.status.choice === submittedChoice),
-  'the submitted choice was applied on Activity_1 at COMPLETED');
+    && e.token.status && e.token.status.choice === enqueuedChoice),
+  'the enqueued choice was applied on Activity_1 at COMPLETED');
 
 console.error('ALL PASSED (WebAssembly choice)');

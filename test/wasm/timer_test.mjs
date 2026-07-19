@@ -36,7 +36,7 @@ const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
 engine.run(0);
-check(JSON.parse(controller.pendingDecisions()).length === 0, 'no decision is pending; the timer waits for the clock');
+check(JSON.parse(controller.getPendingDecisions()).length === 0, 'no decision is pending; the timer waits for the clock');
 check(engine.isAlive(), 'the system is alive, waiting for the timer');
 
 let ticks = 0;
