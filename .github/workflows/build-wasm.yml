@@ -6,7 +6,8 @@ name: wasm
 # workbench, consume it as a package with github:bpmn-os/bpmnos-wasm#dist. Because the build is
 # expensive it runs only when the bridge or the build description changes on main, and on manual
 # request from any branch, which is how a development build is refreshed without running on every
-# push.
+# push. The cross-compiled dependencies are cached and rebuilt only when a dependency or the toolchain
+# changes, so a bridge-only change recompiles just the bridge.
 
 on:
   push:
@@ -53,10 +54,40 @@ jobs:
           version: latest
           actions-cache-folder: emsdk-cache
 
+      # Cache the cross-compiled xerces, bpmn++, and engine. The key carries the resolved commit of each
+      # moving dependency and the Emscripten version, so an upstream advance or a toolchain change misses
+      # the cache and rebuilds from source; a bridge-only change hits it and recompiles just the bridge.
+      # Bump the v1 prefix to invalidate every entry by hand.
+      - name: Resolve dependency versions
+        id: deps
+        run: |
+          {
+            echo "engine=$(git ls-remote https://github.com/bpmn-os/bpmnos-engine.git main | cut -f1)"
+            echo "bpmnpp=$(git ls-remote https://github.com/bpmn-os/bpmnpp.git main | cut -f1)"
+            echo "schematicpp=$(git ls-remote https://github.com/rajgoel/schematicpp HEAD | cut -f1)"
+            echo "emcc=$(emcc --version | head -1 | md5sum | cut -c1-8)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore the dependency build
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build-wasm
+          key: wasm-deps-v1-${{ runner.os }}-${{ steps.deps.outputs.engine }}-${{ steps.deps.outputs.bpmnpp }}-${{ steps.deps.outputs.schematicpp }}-${{ steps.deps.outputs.emcc }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/build-wasm.yml') }}
+
       - name: Build the module
         run: |
           emcmake cmake -S . -B build-wasm
           cmake --build build-wasm --target bpmnos_module -j"$(nproc)"
+
+      # Save only on a miss and only when the build above succeeded, so a broken build never poisons the
+      # cache.
+      - name: Save the dependency build
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build-wasm
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
       - name: Assemble the package
         run: |
