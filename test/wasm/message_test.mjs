@@ -42,7 +42,7 @@ const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
 engine.run(0);
-let pending = JSON.parse(controller.pendingDecisions());
+let pending = JSON.parse(controller.getPendingDecisions());
 check(pending.length > 0, 'the engine stopped at the message delivery');
 
 let delivered = 0;
@@ -50,19 +50,20 @@ let guard = 0;
 while (pending.length > 0 && guard++ < 50) {
   const request = pending[0];
   check(request.type === 'messageDelivery', 'the pending decision is a message delivery');
-  check(request.candidates.length > 0, 'the delivery offers at least one candidate message');
-  const candidate = request.candidates[0];
+  const candidates = JSON.parse(controller.getMessageCandidates(request.instanceId, request.nodeId));
+  check(candidates.length > 0, 'the delivery offers at least one candidate message');
+  const candidate = candidates[0];
   const decision = {
-    type: 'messageDelivery',
     instanceId: request.instanceId,
     nodeId: request.nodeId,
     origin: candidate.origin,
     sender: candidate.sender,
   };
-  check(!('rejected' in JSON.parse(controller.enqueueDecision(JSON.stringify(decision)))), 'enqueueDecision accepted');
+  check(!('rejected' in JSON.parse(controller.enqueueMessageDeliveryDecision(JSON.stringify(decision)))),
+    'enqueueMessageDeliveryDecision accepted');
   delivered += 1;
   engine.resume();
-  pending = JSON.parse(controller.pendingDecisions());
+  pending = JSON.parse(controller.getPendingDecisions());
 }
 
 check(delivered === 1, 'exactly one message was delivered');

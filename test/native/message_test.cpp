@@ -4,15 +4,17 @@
 // The message is not explicitly addressed, so its delivery is not resolved automatically but surfaced
 // to the caller as a message delivery decision. This drives one client and one server and checks that
 // the engine stops at the delivery, offering the waiting message identified by its origin and sender
-// from the header, that submitting that identity delivers the message, and that both the sending and
+// from the header, that enqueuing that identity delivers the message, and that both the sending and
 // the receiving task then complete. The message content is derived by the engine from status and data
 // and plays no part in the identity the bridge uses.
 
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "Controller.h"
 #include "Engine.h"
@@ -20,6 +22,7 @@
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
+using namespace BPMNOS;
 using json = nlohmann::ordered_json;
 
 static std::string readFile(const std::string& path) {
@@ -64,27 +67,30 @@ int main(int argc, char** argv) {
   monitor.addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
-  json pending = controller.pendingDecisions();
-  check(!pending.empty(), "the engine stopped at the message delivery");
+
+  auto findMessageRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
+    for (const auto& weak : controller.getPendingRequests()) {
+      auto request = weak.lock();
+      if (request && request->type == Execution::Observable::Type::MessageDeliveryRequest) {
+        return request;
+      }
+    }
+    return nullptr;
+  };
+
+  auto request = findMessageRequest();
+  check(request != nullptr, "the engine stopped at the message delivery");
 
   int delivered = 0;
   int guard = 0;
-  while (!pending.empty() && guard++ < 50) {
-    const auto& request = pending[0];
-    check(request["type"] == "messageDelivery", "the pending decision is a message delivery");
-    check(!request["candidates"].empty(), "the delivery offers at least one candidate message");
-    const auto& candidate = request["candidates"][0];
-    json decision = {
-      {"instanceId", request["instanceId"]},
-      {"nodeId", request["nodeId"]},
-      {"origin", candidate["origin"]},
-      {"sender", candidate["sender"]},
-    };
-    check(!controller.enqueueMessageDeliveryDecision(decision).contains("rejected"),
+  while (request && guard++ < 50) {
+    auto candidates = controller.getMessageCandidates(request.get());
+    check(!candidates.empty(), "the delivery offers at least one candidate message");
+    check(controller.enqueueMessageDeliveryDecision(request, candidates.front()).has_value(),
           "enqueueMessageDeliveryDecision accepted");
     ++delivered;
     engine.resume();
-    pending = controller.pendingDecisions();
+    request = findMessageRequest();
   }
   check(delivered == 1, "exactly one message was delivered");
 

@@ -52,11 +52,22 @@ export interface Monitor {
 export interface Controller {
   /**
    * Return the decisions left for the caller as a JSON array string, each carrying its kind and its
-   * token's instance and node. A choice additionally carries, per choice of the decision task, either
-   * the allowed enumeration or the lower and upper bounds; a message delivery carries its candidate
-   * messages, each with its origin and sender.
+   * token's instance and node: [{"type":"entry|exit|choice|messageDelivery","instanceId":s,"nodeId":s}].
+   * For a choice or a message delivery, query the allowed decisions with getChoiceCandidates or
+   * getMessageCandidates.
    */
-  pendingDecisions(): string;
+  getPendingDecisions(): string;
+  /**
+   * Return, per choice of the decision task at the given token, the candidate values as a JSON array
+   * string: [{"attribute":s,"enumeration":[...]}] for a drop-down, or
+   * [{"attribute":s,"lowerBound":n,"upperBound":n,"multipleOf":n?}] for a slider.
+   */
+  getChoiceCandidates(instanceId: string, nodeId: string): string;
+  /**
+   * Return the messages that may be delivered to the given waiting token as a JSON array string:
+   * [{"origin":s,"sender":s,"message":{...}}], the origin and sender naming the message for enqueue.
+   */
+  getMessageCandidates(instanceId: string, nodeId: string): string;
   /**
    * Queue the entry of a waiting token, identified by its instance and node, for the next resume. The
    * decision is {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or

@@ -19,7 +19,7 @@ class Controller;
  * Construction builds the data provider from the complete input once, so an Engine is valid the moment
  * it is constructed. It always observes through a monitor. A controller is optional: when the caller
  * attaches one, that caller supplies the decisions and drives execution by running the engine, reading
- * the pending decisions from the controller, submitting a decision, and resuming until the system is no
+ * the pending decisions from the controller, enqueuing a decision, and resuming until the system is no
  * longer alive. When no controller is attached, the engine instead runs autonomously, mirroring the
  * engine's own greedy application by connecting a greedy controller with the guided evaluator and the
  * time-warp clock, so that a run proceeds to completion.

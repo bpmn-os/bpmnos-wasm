@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
   monitor.addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
-  check(controller.pendingDecisions().empty(), "no decision is pending; the timer waits for the clock");
+  check(controller.getPendingRequests().empty(), "no decision is pending; the timer waits for the clock");
   check(engine.isAlive(), "the system is alive, waiting for the timer");
 
   double startTime = engine.getCurrentTime();

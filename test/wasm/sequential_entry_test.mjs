@@ -36,7 +36,7 @@ const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
 engine.run(0);
-let pending = JSON.parse(controller.pendingDecisions());
+let pending = JSON.parse(controller.getPendingDecisions());
 check(pending.length > 0, 'the engine stopped at a sequential entry');
 
 let entered = 0;
@@ -44,11 +44,12 @@ let guard = 0;
 while (pending.length > 0 && guard++ < 50) {
   const request = pending[0];
   check(request.type === 'entry', 'the pending decision is a sequential entry');
-  const decision = { type: 'entry', instanceId: request.instanceId, nodeId: request.nodeId };
-  check(!('rejected' in JSON.parse(controller.enqueueDecision(JSON.stringify(decision)))), 'enqueueDecision accepted');
+  const decision = { instanceId: request.instanceId, nodeId: request.nodeId };
+  check(!('rejected' in JSON.parse(controller.enqueueEntryDecision(JSON.stringify(decision)))),
+    'enqueueEntryDecision accepted');
   entered += 1;
   engine.resume();
-  pending = JSON.parse(controller.pendingDecisions());
+  pending = JSON.parse(controller.getPendingDecisions());
 }
 
 check(pending.length === 0, 'no decision is pending after the sequential entries');

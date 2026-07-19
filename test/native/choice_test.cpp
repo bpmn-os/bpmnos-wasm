@@ -3,15 +3,17 @@
 // The decision task fixture enters an activity that offers a choice from an enumeration and exits it.
 // With an interactive controller the entry and the exit are resolved automatically, so the only decision
 // left for the caller is the choice. This checks that the engine stops exactly at the choice, that the
-// choice is offered with its enumeration keyed by the token's instance and node, and that a submitted
+// choice is offered with its enumeration keyed by the token's instance and node, and that an enqueued
 // value is applied and appears on the completed activity. The instance sets x to minus two, so the
 // enumeration offered is the set from the model with x substituted.
 
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "Controller.h"
 #include "Engine.h"
@@ -19,6 +21,7 @@
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
+using namespace BPMNOS;
 using json = nlohmann::ordered_json;
 
 static std::string readFile(const std::string& path) {
@@ -58,37 +61,39 @@ int main(int argc, char** argv) {
   monitor.addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
-  json pending = controller.pendingDecisions();
-  check(!pending.empty(), "the engine stopped at the choice");
 
-  double submittedChoice = 0;
+  // Entry and exit are resolved automatically, so the only pending decision is the choice.
+  auto findChoiceRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
+    for (const auto& weak : controller.getPendingRequests()) {
+      auto request = weak.lock();
+      if (request && request->type == Execution::Observable::Type::ChoiceRequest) {
+        return request;
+      }
+    }
+    return nullptr;
+  };
+
+  auto request = findChoiceRequest();
+  check(request != nullptr, "the engine stopped at the choice");
+
+  double enqueuedChoice = 0;
   int choiceCount = 0;
   int guard = 0;
-  while (!pending.empty() && guard++ < 50) {
-    // Entry and exit are automatic here, so every pending decision is a choice.
-    for (const auto& decision : pending) {
-      check(decision["type"] == "choice", "the only pending decision is a choice");
-    }
-    const auto& choiceRequest = pending[0];
+  while (request && guard++ < 50) {
     ++choiceCount;
-    json choices = json::array();
-    for (const auto& choice : choiceRequest["choices"]) {
-      check(choice.contains("enumeration") && !choice["enumeration"].empty(),
-            "the choice offers an enumeration of allowed values");
-      double value = choice["enumeration"][0].get<double>();
-      choices.push_back(value);
-      submittedChoice = value;
+    std::vector<BPMNOS::number> choices;
+    for (const auto& [attribute, values] : controller.getChoiceCandidates(request.get())) {
+      check(std::holds_alternative<EnumeratedChoice>(values), "the choice offers an enumeration");
+      const auto& enumeration = std::get<EnumeratedChoice>(values);
+      check(!enumeration.empty(), "the enumeration offers allowed values");
+      choices.push_back(enumeration.front());
+      enqueuedChoice = static_cast<double>(enumeration.front());
     }
-    json decision = {
-      {"instanceId", choiceRequest["instanceId"]},
-      {"nodeId", choiceRequest["nodeId"]},
-      {"choices", choices},
-    };
-    check(!controller.enqueueChoiceDecision(decision).contains("rejected"), "enqueueChoiceDecision accepted");
+    check(controller.enqueueChoiceDecision(request, choices).has_value(), "enqueueChoiceDecision accepted");
     engine.resume();
-    pending = controller.pendingDecisions();
+    request = findChoiceRequest();
   }
-  check(pending.empty(), "no decision is pending after the choice");
+  check(request == nullptr, "no decision is pending after the choice");
   check(choiceCount == 1, "exactly one choice was made");
 
   bool applied = false;
@@ -98,12 +103,12 @@ int main(int argc, char** argv) {
       if (token.value("nodeId", std::string()) == "Activity_1"
           && token.value("state", std::string()) == "COMPLETED"
           && token.contains("status") && token["status"].contains("choice")
-          && token["status"]["choice"].get<double>() == submittedChoice) {
+          && token["status"]["choice"].get<double>() == enqueuedChoice) {
         applied = true;
       }
     }
   }
-  check(applied, "the submitted choice was applied on Activity_1 at COMPLETED");
+  check(applied, "the enqueued choice was applied on Activity_1 at COMPLETED");
 
   std::cerr << "ALL PASSED (choice)\n";
   return 0;

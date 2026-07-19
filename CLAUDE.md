@@ -4,67 +4,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-The interactive bridge exists and is tested. The repository compiles the C++ BPMNOS execution engine
-and exposes a JavaScript facing interface that drives it. Three classes in the namespace
-`BPMNOS::WASM` make up the bridge. The monitor is a passive observer that records the token, event,
-and message log. The controller is an interactive controller that auto resolves the unambiguous
-decisions and supplies the caller's decisions for the contested ones. The engine class owns the
-execution engine and drives its lifecycle. All four decision kinds, entry, exit, choice, and message
-delivery, together with the clock tick, are covered by native and WebAssembly tests that drive real
-fixtures and pass with no sanitizer finding.
+The bridge is four classes in `BPMNOS::WASM`; `src/wasm/Bindings.cpp` is the JSON boundary — the classes
+take and return native types, the bindings translate and resolve the caller's identities to native
+handles. `types/bpmnos.d.ts` has the signatures and JSON shapes. All four decision kinds, the clock tick,
+and one autonomous run are covered by native and WebAssembly tests that pass with no sanitizer finding.
 
-The monitor keeps a log that only grows and returns fresh entries through `drainLog`, and it also
-accepts a live callback through `onNotice` that it invokes with each entry, serialised as a JSON
-string, at the moment the entry is recorded. Both paths deliver the same entries in the same order,
-and that order is the engine's own order of execution. The engine notifies its observers
-synchronously on one thread, calling `notice` once for each state change as execution proceeds, and
-the monitor appends the entry to its log and then invokes the callback within that same call, before
-the engine issues the next notification. Nothing in the bridge sorts, batches, or defers, so a
-consumer observes exactly the sequence the engine produced, and passing a null callback clears the
-sink. The one condition is that the callback runs inside `notice` inside the engine's run and must
-only observe. A callback that advanced the engine, or that deferred its work across a promise or a
-timer before forwarding the entry, could interleave notifications and lose the order.
+`Input` parses the model once, reports the referenced lookup tables through `requiredLookupTables`
+(`Model::getLookupTableNames`), and takes the lookup tables and instance as text. It yields a
+`BPMNOS::Model::Input`, moved out when an `Engine` is built.
 
-Because `start` and `resume` are single blocking calls, a consumer that must not block while the
-engine runs drives the engine from a worker and forwards each entry from the callback into its own
-context. A message posted from a worker arrives in the order it was sent, so the order survives that
-boundary as well. The demo does exactly this: it runs the engine in a worker, appends each entry to
-the page as it arrives, and reports both the engine's run time and the time until the display is
-complete. The workbench will consume the stream the same way, and because it paces playback to the
-animation of token movement, the cost of serialising the log stays hidden behind the wait for
-movement.
+`Engine` builds the data provider on construction. `run(scenarioId)` draws a scenario and runs a fresh
+engine, reusing the parse; `resume`, `isAlive`, and `getCurrentTime` follow the execution engine.
 
-Without a caller supplied controller the engine runs autonomously, replicating the engine's greedy
-application. With one attached the controller is interactive. It owns the unambiguous half of the
-greedy controller, the first feasible exit, the first feasible non sequential entry, and the directly
-addressed message delivery, each guided by a guided evaluator, and resolves those without the caller.
-It leaves the contested half to the caller: a choice, the entry of a child of a sequential ad hoc
-subprocess, and an ambiguous message delivery, each surfaced through the snapshot's pending decisions.
-No time handler is attached, so the engine processes what it can and then stops, and the caller
-advances it by submitting a decision, a clock tick, or a termination and resuming. A submitted decision
-names its token by instance and node, and a message by its origin and its sender from the header, and
-it is validated against the live system state when it is dispatched, so a decision for a token that has
-since been withdrawn finds no match and is dropped. The message content plays no part in this identity;
-the engine derives it from status and data during delivery.
+`Monitor` forwards each token, event, message, and decision request to every observer registered with
+`addObserver`, serialised through `jsonify`, synchronously in the engine's order, keeping no log. An
+observer only observes and is attached before the run.
 
-The bridge takes its inputs in memory and touches no filesystem. The engine's data provider accepts an
-already parsed model tree, lookup tables as content keyed by their source name, and the instance data as
-text, grouped in a `BPMNOS::Model::Input`. So `loadModel` parses the BPMN XML into a tree with the
-engine's own parser, retains the text, and records through `getLookupTableNames` which lookup tables the
-model references, which `requiredLookups` reports so a caller supplies exactly those. On build the bridge
-reparses the retained text into a fresh tree, assembles the input, and constructs the provider from it,
-and the WebAssembly module therefore needs no emulated filesystem.
+`Controller` auto-resolves the first feasible exit, the first feasible non-sequential entry, and the
+directly addressed message delivery under a guided evaluator, and leaves the choice, the sequential ad hoc
+entry, and the ambiguous message delivery to the caller. It exposes `getPendingRequests`,
+`getChoiceCandidates` (the attribute and the raw numbers or the bounds), and `getMessageCandidates`, and
+takes a decision as the request weak pointer and its payload through `enqueue*`, returning `std::expected`.
+It attaches no time handler; the caller enqueues a clock tick or a termination. An enqueued decision is
+built into an event at once and dispatched only while `Event::expired()` is false. Omit the controller to
+run under the greedy application.
 
-The WebAssembly build works. Under the Emscripten toolchain the same CMake fetches xerces, bpmn++,
-and the engine from source into the build tree, cross compiles them there, and links the bridge and
-its embind bindings into `build-wasm/bpmnos.js` and `build-wasm/bpmnos.wasm`. The engine cross
-compiles from its upstream source with no patch. The Node tests under `test/wasm` drive the same
-fixtures as the native tests and pass. See `docs/wasm-build.md` for the build and the UTF-8 locale
-it selects.
-
-Read `ROADMAP.md` for the milestone plan, the verified model of how the engine executes, and the
-reasoning behind the design. Read `README.md` for the account of the architecture and the driving
-model. This file records what is needed to work in the code.
+The WebAssembly build links into `dist/bpmnos.mjs` and `dist/bpmnos.wasm`. `API.md` documents the
+JavaScript API and `types/bpmnos.d.ts` declares it.
 
 ## Building and testing
 
@@ -87,27 +53,29 @@ command line, so they do not depend on the working directory.
 ## Working with the engine
 
 The engine is treated as fixed and is not to be changed. Everything the bridge needs is reachable
-through the engine's public interface, its public system state, and the fact that a token and a
-message each yield a weak pointer to themselves. Confirm any engine fact against the source under
+through the engine's public interface, its public system state, and the engine's weak-pointer lifecycle:
+tokens, decision requests, and messages each yield a weak pointer, and an event reports through
+`Event::expired()` whether it has become stale. Confirm any engine fact against the source under
 `../engine` rather than assuming it, and check the BPMN specification where the behaviour is a
 specification matter.
 
-A few facts discovered while building the bridge are easy to get wrong. A choice of a decision task
-is defined either as an enumeration or as a bounded range, and the engine's `getEnumeration` and
-`getBounds` each assert unless called for the matching kind, so the kind must be discriminated on the
-choice's `enumeration` member before either is called. A static scenario reports completion only once
-simulated time has passed the last instantiation, so a model with a single instance at time zero
-stays alive after all its work is done until time advances, which is why a clock is needed to reach a
-formally terminal state even for a model without timers. The engine's pending decision lists prune
-expired entries only while they are traversed, so the bridge treats its own weak pointer, not
-membership in a list, as the test of liveness, and it never holds a strong reference that would keep
-an engine object alive.
+A few facts discovered while building the bridge are easy to get wrong. A choice of a decision task is
+defined either as an enumeration or as a bounded range, and `getEnumeration` and `getBounds` each assert
+unless called for the matching kind, so the bridge discriminates on the choice's `enumeration` member and
+returns the raw numbers or the bounds with `multipleOf`; the bindings then render each value in the
+attribute's type (`ValueType`), so a string choice reads as its labels through the string registry, not
+as indices. A static scenario reports completion only once simulated time has passed the last
+instantiation, so a model with a single instance at time zero stays alive after all its work is done
+until time advances, which is why a clock is needed to reach a formally terminal state even for a model
+without timers. The pending decision lists prune expired entries only while traversed, and a built event
+self-validates through `Event::expired()`, so the bridge treats the weak pointer, not list membership, as
+liveness, and never holds a strong reference that would keep an engine object alive.
 
-Advancing simulated time by a clock tick is done through the controller. The interactive controller
-attaches no time handler, so time does not advance on its own; the caller submits a clock tick, which
-the controller dispatches as a clock tick event at the next fetch, and each tick advances the current
-time by one. A model with a timer therefore reaches a terminal state once the caller has ticked the
-clock past the trigger, which the native and WebAssembly timer tests exercise.
+Advancing simulated time by a clock tick is done through the controller, which attaches no time handler:
+the caller enqueues a clock tick, which the controller dispatches as a clock tick event at the next
+fetch, and each tick advances the current time by one. A model with a timer therefore reaches a terminal
+state once the caller has ticked the clock past the trigger, which the native and WebAssembly timer tests
+exercise.
 
 ## Branching
 
