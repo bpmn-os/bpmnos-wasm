@@ -161,7 +161,7 @@ else()
     -lembind
     -sMODULARIZE=1
     -sEXPORT_ES6=1
-    -sEXPORT_NAME=createBpmnos
+    -sEXPORT_NAME=createBPMNOS
     -sALLOW_MEMORY_GROWTH=1
   )
   set_target_properties(bpmnos_module PROPERTIES

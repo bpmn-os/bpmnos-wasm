@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import createBpmnos from '../../dist/bpmnos.mjs';
+import createBPMNOS from '../../dist/bpmnos.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -19,7 +19,7 @@ function check(condition, message) {
   console.error(`ok: ${message}`);
 }
 
-const module = await createBpmnos();
+const module = await createBPMNOS();
 
 const modelXml = readFileSync(join(root, 'test', 'fixtures', 'DecisionTask_with_enumeration.bpmn'), 'utf8');
 const instanceCsv =
