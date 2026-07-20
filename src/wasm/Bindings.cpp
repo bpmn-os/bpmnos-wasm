@@ -32,13 +32,13 @@ using namespace BPMNOS::WASM;
 namespace {
 
 /**
- * @brief Binds Input::requiredLookupTables, reporting the model's lookup table source names.
+ * @brief Binds Input::getLookupTableNames, reporting the model's lookup table source names.
  *
  * @param input The input.
  * @return The JSON array of lookup table source names as a string.
  */
-std::string inputRequiredLookupTables(Input& input) {
-  return input.requiredLookupTables().dump();
+std::string inputGetLookupTableNames(Input& input) {
+  return input.getLookupTableNames().dump();
 }
 
 /**
@@ -347,23 +347,23 @@ std::string controllerEnqueueMessageDeliveryDecision(Controller& controller, con
 }
 
 /**
- * @brief Binds Controller::enqueueClockTick.
+ * @brief Binds Controller::enqueueClockTickEvent.
  *
  * @param controller The controller.
  * @return The JSON result as a string.
  */
-std::string controllerEnqueueClockTick(Controller& controller) {
-  return enqueueResult(controller.enqueueClockTick());
+std::string controllerEnqueueClockTickEvent(Controller& controller) {
+  return enqueueResult(controller.enqueueClockTickEvent());
 }
 
 /**
- * @brief Binds Controller::enqueueTermination.
+ * @brief Binds Controller::enqueueTerminationEvent.
  *
  * @param controller The controller.
  * @return The JSON result as a string.
  */
-std::string controllerEnqueueTermination(Controller& controller) {
-  return enqueueResult(controller.enqueueTermination());
+std::string controllerEnqueueTerminationEvent(Controller& controller) {
+  return enqueueResult(controller.enqueueTerminationEvent());
 }
 
 /**
@@ -410,12 +410,12 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .function("enqueueExitDecision", &controllerEnqueueExitDecision)
     .function("enqueueChoiceDecision", &controllerEnqueueChoiceDecision)
     .function("enqueueMessageDeliveryDecision", &controllerEnqueueMessageDeliveryDecision)
-    .function("enqueueClockTick", &controllerEnqueueClockTick)
-    .function("enqueueTermination", &controllerEnqueueTermination);
+    .function("enqueueClockTickEvent", &controllerEnqueueClockTickEvent)
+    .function("enqueueTerminationEvent", &controllerEnqueueTerminationEvent);
 
   class_<Input>("Input")
     .constructor<std::string>()
-    .function("requiredLookupTables", &inputRequiredLookupTables)
+    .function("getLookupTableNames", &inputGetLookupTableNames)
     .function("addLookupTable", &Input::addLookupTable)
     .function("setInstance", &Input::setInstance);
 
@@ -424,5 +424,6 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .function("run", &Engine::run)
     .function("resume", &Engine::resume)
     .function("isAlive", &Engine::isAlive)
-    .function("getCurrentTime", &Engine::getCurrentTime);
+    .function("getCurrentTime", &Engine::getCurrentTime)
+    .function("getWeightedObjective", &Engine::getWeightedObjective);
 }

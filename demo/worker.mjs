@@ -64,7 +64,7 @@ self.onmessage = async (event) => {
       modelXml = message.model;
       lookupTables = {};
       const probe = new Module.Input(modelXml);
-      const required = JSON.parse(probe.requiredLookupTables());
+      const required = JSON.parse(probe.getLookupTableNames());
       probe.delete();
       self.postMessage({ type: 'lookups', required });
       return;
@@ -93,6 +93,7 @@ self.onmessage = async (event) => {
       self.postMessage({
         type: 'done',
         time: engine.getCurrentTime(),
+        objective: engine.getWeightedObjective(),
         count: entryCount,
         scenarioId,
         engineMs,

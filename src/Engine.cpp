@@ -90,4 +90,12 @@ double Engine::getCurrentTime() const {
   return static_cast<double>(engine->getCurrentTime());
 }
 
+double Engine::getWeightedObjective() const {
+  if (!engine) {
+    return 0.0;
+  }
+  const auto* systemState = engine->getSystemState();
+  return systemState ? static_cast<double>(systemState->getWeightedObjective()) : 0.0;
+}
+
 } // namespace BPMNOS::WASM

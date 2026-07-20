@@ -18,7 +18,7 @@ Input::Input(const std::string& bpmnXml) {
   input.model = std::unique_ptr<XML::XMLObject>(root);
 }
 
-json Input::requiredLookupTables() const {
+json Input::getLookupTableNames() const {
   return guarded([&] {
     return json(Model::Model::getLookupTableNames(*input.model));
   });

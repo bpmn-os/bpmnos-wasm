@@ -14,7 +14,7 @@ const module = await createBpmnos();
 Assembles a run's inputs. It is consumed when an Engine is built from it, so one Input builds one Engine.
 
 - `new Input(bpmnXml: string)` — parse the model.
-- `requiredLookupTables(): string` — a JSON array of the lookup table source names the model references.
+- `getLookupTableNames(): string` — a JSON array of the lookup table source names the model references.
 - `addLookupTable(name: string, csv: string)` — supply one lookup table by its source name.
 - `setInstance(csv: string)` — supply the instance data.
 
@@ -28,6 +28,7 @@ Assembles a run's inputs. It is consumed when an Engine is built from it, so one
 - `resume()` — continue the run.
 - `isAlive(): boolean` — whether the system may still proceed; a run is done once it is false.
 - `getCurrentTime(): number` — the current simulated time.
+- `getWeightedObjective(): number` — the total weighted objective value accumulated so far; a live running value, valid at any pause, not only at termination.
 
 ## Monitor
 
@@ -62,8 +63,8 @@ sequential ad hoc entry, and the ambiguous message delivery are left to the call
 - `enqueueChoiceDecision(json)` — `{"instanceId": s, "nodeId": s, "choices": [v, …]}`, one value per
   choice of the decision task.
 - `enqueueMessageDeliveryDecision(json)` — `{"instanceId": s, "nodeId": s, "origin": s, "sender": s}`.
-- `enqueueClockTick()` — advance the clock by one at the next resume.
-- `enqueueTermination()` — end the run at the next resume.
+- `enqueueClockTickEvent()` — advance the clock by one at the next resume.
+- `enqueueTerminationEvent()` — end the run at the next resume.
 
 Each `enqueue…` returns `{"queued": true}` or `{"rejected": reason}`. A decision names its token by
 instance and node, and a message by its origin and sender; an enqueued decision whose token, request, or
@@ -73,7 +74,7 @@ message has expired is silently dropped.
 
 ```js
 const input = new module.Input(bpmnXml);
-for (const name of JSON.parse(input.requiredLookupTables())) input.addLookupTable(name, lookup[name]);
+for (const name of JSON.parse(input.getLookupTableNames())) input.addLookupTable(name, lookup[name]);
 input.setInstance(instanceCsv);
 
 const monitor = new module.Monitor();
@@ -93,5 +94,5 @@ while (pending.length) {
 }
 ```
 
-Without a controller, `run` proceeds to completion on its own. `enqueueClockTick` and `enqueueTermination`
+Without a controller, `run` proceeds to completion on its own. `enqueueClockTickEvent` and `enqueueTerminationEvent`
 advance a controller-driven run when no decision is pending.
