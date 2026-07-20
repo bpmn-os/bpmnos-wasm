@@ -6,8 +6,8 @@ name: wasm
 # workbench, consume it as a package with github:bpmn-os/bpmnos-wasm#dist. Because the build is
 # expensive it runs only when the bridge or the build description changes on main, and on manual
 # request from any branch, which is how a development build is refreshed without running on every
-# push. The cross-compiled dependencies are cached and rebuilt only when a dependency or the toolchain
-# changes, so a bridge-only change recompiles just the bridge.
+# push. The cross-compiled dependencies are cached and rebuilt only when a dependency changes, so a
+# bridge-only change recompiles just the bridge.
 
 on:
   push:
@@ -48,16 +48,48 @@ jobs:
           sudo cmake --install /tmp/schematicpp/build
           command -v schematic++
 
-      - name: Set up Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+      # Emscripten is installed at the fixed path $HOME/emsdk, not a per-run temporary directory, so the
+      # absolute toolchain path that CMake records in the configured build tree stays valid across runs
+      # and a restored dependency build reconfigures instead of failing. The install is cached under a
+      # constant key, which freezes the toolchain version until the key is bumped, so the dependency
+      # cache below is not invalidated by the moving "latest" release. Bump emsdk-v1 to take a newer
+      # toolchain.
+      - name: Restore Emscripten
+        id: emsdk
+        uses: actions/cache/restore@v4
         with:
-          version: latest
-          actions-cache-folder: emsdk-cache
+          path: ~/emsdk
+          key: emsdk-v1-${{ runner.os }}
+
+      - name: Set up Emscripten
+        run: |
+          if [ ! -x "$HOME/emsdk/emsdk" ]; then
+            git clone https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+            "$HOME/emsdk/emsdk" install latest
+            "$HOME/emsdk/emsdk" activate latest
+          fi
+          # Export the toolchain to every later step through the fixed install path.
+          source "$HOME/emsdk/emsdk_env.sh"
+          {
+            echo "PATH=$PATH"
+            echo "EMSDK=$EMSDK"
+            echo "EM_CONFIG=$EM_CONFIG"
+          } >> "$GITHUB_ENV"
+          emcc --version | head -1
+
+      - name: Save Emscripten
+        if: steps.emsdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/emsdk
+          key: emsdk-v1-${{ runner.os }}
 
       # Cache the cross-compiled xerces, bpmn++, and engine. The key carries the resolved commit of each
-      # moving dependency and the Emscripten version, so an upstream advance or a toolchain change misses
+      # moving dependency and the Emscripten version, so an upstream advance or a toolchain bump misses
       # the cache and rebuilds from source; a bridge-only change hits it and recompiles just the bridge.
-      # Bump the v1 prefix to invalidate every entry by hand.
+      # The build configuration is not in the key, because the configured tree is reconfigured on every
+      # run and a bridge-side configuration change, such as the export name, does not affect the
+      # dependencies. Bump the v2 prefix to invalidate every entry by hand.
       - name: Resolve dependency versions
         id: deps
         run: |
@@ -73,7 +105,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: build-wasm
-          key: wasm-deps-v1-${{ runner.os }}-${{ steps.deps.outputs.engine }}-${{ steps.deps.outputs.bpmnpp }}-${{ steps.deps.outputs.schematicpp }}-${{ steps.deps.outputs.emcc }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/build-wasm.yml') }}
+          key: wasm-deps-v2-${{ runner.os }}-${{ steps.deps.outputs.engine }}-${{ steps.deps.outputs.bpmnpp }}-${{ steps.deps.outputs.schematicpp }}-${{ steps.deps.outputs.emcc }}
 
       - name: Build the module
         run: |
