@@ -68,14 +68,18 @@ jobs:
             "$HOME/emsdk/emsdk" install latest
             "$HOME/emsdk/emsdk" activate latest
           fi
-          # Export the toolchain to every later step through the fixed install path.
+          # Export the toolchain to every later step through the fixed install path. emsdk_env.sh leaves
+          # EM_CONFIG empty on current Emscripten, so point it at the .emscripten config that activate
+          # writes under $EMSDK; that config carries the absolute paths to binaryen, llvm, and node, all
+          # under the fixed install path, so a build finds wasm-opt without them being on PATH.
           source "$HOME/emsdk/emsdk_env.sh"
           {
             echo "PATH=$PATH"
             echo "EMSDK=$EMSDK"
-            echo "EM_CONFIG=$EM_CONFIG"
+            echo "EM_CONFIG=${EM_CONFIG:-$HOME/emsdk/.emscripten}"
           } >> "$GITHUB_ENV"
           emcc --version | head -1
+          test -f "${EM_CONFIG:-$HOME/emsdk/.emscripten}"
 
       - name: Save Emscripten
         if: steps.emsdk.outputs.cache-hit != 'true'
