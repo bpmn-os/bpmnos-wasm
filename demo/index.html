@@ -148,6 +148,7 @@
         const displayMs = performance.now() - runStartedAt;
         $('status').textContent =
           'final time: ' + message.time +
+          '\nobjective: ' + message.objective +
           '\nlog entries: ' + count +
           '\nscenario: ' + message.scenarioId +
           '\nengine time: ' + (message.engineMs / 1000).toFixed(1) + ' s' +

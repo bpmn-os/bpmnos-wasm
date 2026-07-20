@@ -159,7 +159,7 @@ std::expected<void, std::string> Controller::enqueueMessageDeliveryDecision(
   return {};
 }
 
-std::expected<void, std::string> Controller::enqueueClockTick() {
+std::expected<void, std::string> Controller::enqueueClockTickEvent() {
   if (!systemState) {
     return std::unexpected("no system state");
   }
@@ -167,7 +167,7 @@ std::expected<void, std::string> Controller::enqueueClockTick() {
   return {};
 }
 
-std::expected<void, std::string> Controller::enqueueTermination() {
+std::expected<void, std::string> Controller::enqueueTerminationEvent() {
   queue.push_back(std::make_shared<Execution::TerminationEvent>());
   return {};
 }

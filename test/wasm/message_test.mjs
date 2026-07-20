@@ -28,9 +28,9 @@ const instanceCsv =
   'Server1; ServerProcess;\n';
 
 const input = new module.Input(modelXml);
-const required = JSON.parse(input.requiredLookupTables());
+const required = JSON.parse(input.getLookupTableNames());
 check(Array.isArray(required) && required.length === 1 && required[0] === 'costs.csv',
-  "requiredLookupTables reports the model's lookup table");
+  "getLookupTableNames reports the model's lookup table");
 input.addLookupTable('costs.csv', costsCsv);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();

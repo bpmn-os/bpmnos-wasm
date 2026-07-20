@@ -42,7 +42,7 @@ check(engine.isAlive(), 'the system is alive, waiting for the timer');
 let ticks = 0;
 let guard = 0;
 while (engine.isAlive() && guard++ < 20) {
-  controller.enqueueClockTick();
+  controller.enqueueClockTickEvent();
   const previousTime = engine.getCurrentTime();
   engine.resume();
   check(engine.getCurrentTime() === previousTime + 1, 'a clock tick advances time by one');

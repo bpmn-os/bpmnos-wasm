@@ -42,5 +42,9 @@ check(Array.isArray(log) && log.length > 0, 'the monitor captured a log');
 check(log.some((e) => e.token && e.token.nodeId === 'Activity_1' && e.token.state === 'COMPLETED'),
   'the decision task completed');
 
-console.error(`${log.length} log entries, final time ${engine.getCurrentTime()}`);
+const objective = engine.getWeightedObjective();
+check(typeof objective === 'number' && Number.isFinite(objective),
+  'the engine reports a finite weighted objective');
+
+console.error(`${log.length} log entries, final time ${engine.getCurrentTime()}, objective ${objective}`);
 console.error('ALL PASSED (WebAssembly autonomous greedy run)');

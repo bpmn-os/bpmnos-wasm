@@ -11,7 +11,7 @@ export interface Input {
    * Return a JSON array string of the lookup table source names the model references (the keys to
    * supply to addLookupTable), so a caller can prompt for exactly those.
    */
-  requiredLookupTables(): string;
+  getLookupTableNames(): string;
   /** Provide one lookup table by its source name. */
   addLookupTable(name: string, csv: string): void;
   /** Provide the instance CSV. */
@@ -32,6 +32,11 @@ export interface Engine {
   isAlive(): boolean;
   /** Report the current simulated time. */
   getCurrentTime(): number;
+  /**
+   * Report the total weighted objective value accumulated so far, mirroring the engine's
+   * getWeightedObjective. It is a live running value, valid at any pause, not only at termination.
+   */
+  getWeightedObjective(): number;
   delete(): void;
 }
 
@@ -94,9 +99,9 @@ export interface Controller {
    */
   enqueueMessageDeliveryDecision(decisionJson: string): string;
   /** Queue a clock tick that advances simulated time by one unit at the next resume. */
-  enqueueClockTick(): string;
+  enqueueClockTickEvent(): string;
   /** Queue a termination event that ends execution at the next resume. */
-  enqueueTermination(): string;
+  enqueueTerminationEvent(): string;
   delete(): void;
 }
 

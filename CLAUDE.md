@@ -9,7 +9,7 @@ take and return native types, the bindings translate and resolve the caller's id
 handles. `types/bpmnos.d.ts` has the signatures and JSON shapes. All four decision kinds, the clock tick,
 and one autonomous run are covered by native and WebAssembly tests that pass with no sanitizer finding.
 
-`Input` parses the model once, reports the referenced lookup tables through `requiredLookupTables`
+`Input` parses the model once, reports the referenced lookup tables through `getLookupTableNames`
 (`Model::getLookupTableNames`), and takes the lookup tables and instance as text. It yields a
 `BPMNOS::Model::Input`, moved out when an `Engine` is built.
 

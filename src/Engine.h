@@ -86,6 +86,15 @@ public:
    */
   double getCurrentTime() const;
 
+  /**
+   * @brief Reports the total weighted objective value accumulated so far, mirroring the system state's
+   * getWeightedObjective, as a double for the JavaScript boundary. It is a live running value, valid at
+   * any pause, not only at termination.
+   *
+   * @return The current objective value, or zero before the first run.
+   */
+  double getWeightedObjective() const;
+
 private:
   std::unique_ptr<Model::DataProvider> dataProvider;  ///< Built once from the input; reused across runs.
   Config config;                                      ///< The provider kind and base seed.

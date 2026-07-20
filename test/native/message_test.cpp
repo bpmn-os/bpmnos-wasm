@@ -54,9 +54,9 @@ int main(int argc, char** argv) {
     "Server1; ServerProcess;\n";
 
   Input input(modelXml);
-  json required = input.requiredLookupTables();
+  json required = input.getLookupTableNames();
   check(required.is_array() && required.size() == 1 && required[0] == "costs.csv",
-        "requiredLookupTables reports the model's lookup table");
+        "getLookupTableNames reports the model's lookup table");
   input.addLookupTable("costs.csv", costsCsv);
   input.setInstance(instanceCsv);
   Monitor monitor;

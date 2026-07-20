@@ -132,14 +132,14 @@ public:
    *
    * @return Nothing on acceptance, or a reason when no system state is installed.
    */
-  std::expected<void, std::string> enqueueClockTick();
+  std::expected<void, std::string> enqueueClockTickEvent();
 
   /**
    * @brief Enqueues a termination that ends execution at the next advance.
    *
    * @return Nothing.
    */
-  std::expected<void, std::string> enqueueTermination();
+  std::expected<void, std::string> enqueueTerminationEvent();
 
 private:
   std::unique_ptr<Execution::Evaluator> evaluator;                         ///< guides the auto dispatchers
