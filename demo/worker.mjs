@@ -9,9 +9,9 @@
 // controller. Because the engine is built once from the input, repeated runs on the same instances
 // reuse the parsed model and only advance the scenario, so each run is the next stochastic sample.
 
-import createBpmnos from './bpmnos.mjs';
+import createBPMNOS from './bpmnos.mjs';
 
-const ready = createBpmnos();
+const ready = createBPMNOS();
 ready.then(() => self.postMessage({ type: 'ready' }));
 
 let Module = null;

@@ -5,8 +5,8 @@ scalars, identifiers, and CSV text cross as native numbers and strings. Instance
 `delete()` on each when done. The type declarations are in `types/bpmnos.d.ts`.
 
 ```js
-import createBpmnos from './bpmnos.mjs';
-const module = await createBpmnos();
+import createBPMNOS from './bpmnos.mjs';
+const module = await createBPMNOS();
 ```
 
 ## Input

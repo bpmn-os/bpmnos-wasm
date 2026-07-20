@@ -105,7 +105,7 @@ export interface Controller {
   delete(): void;
 }
 
-export interface BpmnosModule {
+export interface BPMNOSModule {
   /** Parse a BPMN model XML into an input the engine is built from. */
   Input: { new (bpmnXml: string): Input };
   /**
@@ -119,4 +119,4 @@ export interface BpmnosModule {
 }
 
 /** Instantiate the WebAssembly module. The wasm is resolved relative to this module. */
-export default function createBpmnos(): Promise<BpmnosModule>;
+export default function createBPMNOS(): Promise<BPMNOSModule>;
