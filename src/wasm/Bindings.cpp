@@ -12,6 +12,7 @@
 #include <clocale>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "Controller.h"
 #include "Convert.h"
 #include "Engine.h"
+#include "EnqueuedEvents.h"
 #include "Input.h"
 #include "Monitor.h"
 
@@ -42,26 +44,139 @@ std::string inputGetLookupTableNames(Input& input) {
 }
 
 /**
+ * @brief Builds the data provider the caller named, moving the assembled input into it.
+ *
+ * The names are the four kinds the engine offers; an unknown one is refused rather than defaulted, so a
+ * misspelling is an error at construction rather than a run of the wrong flavour.
+ *
+ * @param input The assembled input, consumed here. The Input is empty afterwards, so one Input builds one
+ * provider.
+ * @param providerJson {"provider": "static"|"expected"|"dynamic"|"stochastic", "seed": n}, both optional.
+ * @return The provider, owned by the engine it is handed to.
+ */
+std::unique_ptr<Model::DataProvider> createDataProvider(Input& input, const std::string& providerJson) {
+  json parsed = json::parse(providerJson);
+  std::string provider = parsed.value("provider", std::string("stochastic"));
+  if (provider == "static") {
+    return std::make_unique<Model::StaticDataProvider>(input.release());
+  }
+  if (provider == "expected") {
+    return std::make_unique<Model::ExpectedValueDataProvider>(input.release());
+  }
+  if (provider == "dynamic") {
+    return std::make_unique<Model::DynamicDataProvider>(input.release());
+  }
+  if (provider == "stochastic") {
+    // The base seed is fixed here; the scenario index a run adds is what varies the sample.
+    return std::make_unique<Model::StochasticDataProvider>(input.release(), parsed.value("seed", 0u));
+  }
+  throw std::runtime_error("unknown provider: " + provider);
+}
+
+/**
  * @brief Constructs an Engine, since embind cannot marshal a BPMNOS::Model::Input, which owns the parsed
- * tree. It parses the configuration JSON, moves the assembled input out of the JavaScript-held Input, and
- * hands it to the engine. The Input is empty afterwards, so one Input builds one Engine.
+ * tree, nor a data provider built from it.
  *
  * @param input The assembled input, consumed here.
- * @param configJson The configuration as a JSON string: {"provider": ..., "seed": n}, each field optional.
- * @param monitor The monitor observing every run.
- * @param controller The controller supplying decisions, or null to run autonomously.
+ * @param providerJson The data provider to build, as documented on createDataProvider.
+ * @param controller The controller driving every run.
+ * @param monitor The monitor observing every run, or null for an unobserved one.
  * @return The constructed engine, owned by embind.
  */
-Engine* createEngine(Input& input, const std::string& configJson, Monitor* monitor, Controller* controller) {
-  json parsed = json::parse(configJson);
-  Engine::Config config;
-  if (parsed.contains("provider")) {
-    config.provider = parsed["provider"].get<std::string>();
+Engine* createEngine(Input& input, const std::string& providerJson,
+                     std::shared_ptr<Controller> controller, std::shared_ptr<Monitor> monitor) {
+  return new Engine(createDataProvider(input, providerJson), std::move(controller), std::move(monitor));
+}
+
+/**
+ * @brief Builds the evaluator the caller named, shared by every dispatcher built against it.
+ *
+ * @param name The evaluator class: "GuidedEvaluator" or "LocalEvaluator".
+ * @return The evaluator.
+ */
+std::shared_ptr<Execution::Evaluator> createEvaluator(const std::string& name) {
+  if (name == "GuidedEvaluator") {
+    return std::make_shared<Execution::GuidedEvaluator>();
   }
-  if (parsed.contains("seed")) {
-    config.seed = parsed["seed"].get<unsigned int>();
+  if (name == "LocalEvaluator") {
+    return std::make_shared<Execution::LocalEvaluator>();
   }
-  return new Engine(input.release(), std::move(config), monitor, controller);
+  throw std::runtime_error("unknown evaluator: " + name);
+}
+
+/**
+ * @brief Builds the dispatcher the caller named.
+ *
+ * A name is the class of the dispatcher, or, for the ones a GreedyDispatcher drives, the candidates class
+ * that distinguishes it. Each of those keeps a share of the evaluator, so the composition needs no other
+ * holder of it. Metronome is written with its clock tick duration in milliseconds, as "Metronome(500)", or
+ * without it for the engine's own default. An unknown name is refused, since a silently dropped dispatcher
+ * is a run that quietly decides something else than the caller composed.
+ *
+ * @param name The dispatcher to build.
+ * @param evaluator The evaluator the evaluating ones are built against.
+ * @return The dispatcher.
+ */
+std::unique_ptr<Execution::EventDispatcher> createDispatcher(
+  const std::string& name, const std::shared_ptr<Execution::Evaluator>& evaluator) {
+  if (name == "FirstFeasibleExit") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator);
+  }
+  if (name == "FirstFeasibleEntry") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator);
+  }
+  if (name == "FirstEnumeratedChoice") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstEnumeratedChoice>>(evaluator);
+  }
+  if (name == "FirstBisectionalChoice") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstBisectionalChoice>>(evaluator);
+  }
+  if (name == "SequentialEntries") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::SequentialEntries>>(evaluator);
+  }
+  if (name == "MessageDeliveries") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::MessageDeliveries>>(evaluator);
+  }
+  if (name == "CompetingCandidates") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::CompetingCandidates>>(evaluator);
+  }
+  if (name == "InstantDirectMessage") {
+    return std::make_unique<Execution::InstantDirectMessage>();
+  }
+  if (name == "TimeWarp") {
+    return std::make_unique<Execution::TimeWarp>();
+  }
+  if (name == "Metronome") {
+    return std::make_unique<Execution::Metronome>();
+  }
+  if (name.starts_with("Metronome(") && name.back() == ')') {
+    // Ticks the clock in step with real time, so a run advances at the pace of a wall clock rather than as
+    // fast as it can; the argument is how long a tick lasts.
+    return std::make_unique<Execution::Metronome>(
+      static_cast<unsigned int>(std::stoul(name.substr(std::string("Metronome(").size()))));
+  }
+  if (name == "EnqueuedEvents") {
+    return std::make_unique<EnqueuedEvents>();
+  }
+  throw std::runtime_error("unknown dispatcher: " + name);
+}
+
+/**
+ * @brief Constructs a Controller from the composition the caller named.
+ *
+ * @param compositionJson {"evaluator": name, "dispatchers": [ name, ... ]}, the evaluator optional and
+ * defaulting to the guided one, the dispatchers walked in the order given and holding exactly one
+ * "EnqueuedEvents".
+ * @return The constructed controller, owned by embind and shared with the engine it drives.
+ */
+std::shared_ptr<Controller> createController(const std::string& compositionJson) {
+  json parsed = json::parse(compositionJson);
+  auto evaluator = createEvaluator(parsed.value("evaluator", std::string("GuidedEvaluator")));
+  std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
+  for (const auto& name : parsed.at("dispatchers")) {
+    dispatchers.push_back(createDispatcher(name.get<std::string>(), evaluator));
+  }
+  return std::make_shared<Controller>(std::move(dispatchers));
 }
 
 /**
@@ -397,12 +512,14 @@ int main() {
 }
 
 EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
+  // The monitor and the controller are shared with the engine they are handed to, and each is constructed
+  // one way only: an instance held raw in one place and shared in another is how embind double frees.
   class_<Monitor>("Monitor")
-    .constructor<>()
+    .smart_ptr_constructor("Monitor", &std::make_shared<Monitor>)
     .function("addObserver", &monitorAddObserver);
 
   class_<Controller>("Controller")
-    .constructor<>()
+    .smart_ptr_constructor("Controller", &createController)
     .function("getPendingDecisions", &controllerGetPendingDecisions)
     .function("getChoiceCandidates", &controllerGetChoiceCandidates)
     .function("getMessageCandidates", &controllerGetMessageCandidates)

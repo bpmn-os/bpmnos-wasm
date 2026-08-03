@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "Controller.h"
+#include "composition.h"
 #include "Engine.h"
 #include "Input.h"
 #include "Monitor.h"
@@ -53,18 +54,18 @@ int main(int argc, char** argv) {
 
   Input input(modelXml);
   input.setInstance(instanceCsv);
-  Monitor monitor;
-  Controller controller;
-  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
+  auto monitor = std::make_shared<Monitor>();
+  auto controller = Test::interactiveController();
+  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
 
   json log = json::array();
-  monitor.addObserver([&](const json& entry) { log.push_back(entry); });
+  monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
 
   // Entry and exit are resolved automatically, so the only pending decision is the choice.
   auto findChoiceRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
-    for (const auto& weak : controller.getPendingRequests()) {
+    for (const auto& weak : controller->getPendingRequests()) {
       auto request = weak.lock();
       if (request && request->type == Execution::Observable::Type::ChoiceRequest) {
         return request;
@@ -82,14 +83,14 @@ int main(int argc, char** argv) {
   while (request && guard++ < 50) {
     ++choiceCount;
     std::vector<BPMNOS::number> choices;
-    for (const auto& [attribute, values] : controller.getChoiceCandidates(request.get())) {
+    for (const auto& [attribute, values] : controller->getChoiceCandidates(request.get())) {
       check(std::holds_alternative<EnumeratedChoice>(values), "the choice offers an enumeration");
       const auto& enumeration = std::get<EnumeratedChoice>(values);
       check(!enumeration.empty(), "the enumeration offers allowed values");
       choices.push_back(enumeration.front());
       enqueuedChoice = static_cast<double>(enumeration.front());
     }
-    check(controller.enqueueChoiceDecision(request, choices).has_value(), "enqueueChoiceDecision accepted");
+    check(controller->enqueueChoiceDecision(request, choices).has_value(), "enqueueChoiceDecision accepted");
     engine.resume();
     request = findChoiceRequest();
   }

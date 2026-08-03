@@ -1,12 +1,13 @@
-// WebAssembly autonomous run test. With no controller attached the engine runs itself under the
-// greedy controller with the guided evaluator, exactly as the engine's own greedy application does.
-// This drives the decision-task fixture to completion and checks that the run terminates and that the
-// monitor captured a log recording the decision task's completion.
+// WebAssembly greedy composition test. Composed of every deciding dispatcher and a clock, a controller
+// settles a run by itself, exactly as the engine's own greedy application does, so one call to run carries
+// the decision-task fixture to its end. This checks that the run terminates without being driven and that
+// the monitor captured a log recording the decision task's completion.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
+import { greedy } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -30,14 +31,15 @@ const instanceCsv =
 const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, null);
+const controller = new module.Controller(greedy);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
 input.delete();
 
 const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
 engine.run(0);
-check(!engine.isAlive(), 'the autonomous run terminated');
+check(!engine.isAlive(), 'the greedy composition ran to the end without being driven');
 check(Array.isArray(log) && log.length > 0, 'the monitor captured a log');
 check(log.some((e) => e.token && e.token.nodeId === 'Activity_1' && e.token.state === 'COMPLETED'),
   'the decision task completed');
@@ -47,4 +49,4 @@ check(typeof objective === 'number' && Number.isFinite(objective),
   'the engine reports a finite weighted objective');
 
 console.error(`${log.length} log entries, final time ${engine.getCurrentTime()}, objective ${objective}`);
-console.error('ALL PASSED (WebAssembly autonomous greedy run)');
+console.error('ALL PASSED (WebAssembly greedy composition)');

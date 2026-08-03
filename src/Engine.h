@@ -14,44 +14,43 @@ class Monitor;
 class Controller;
 
 /**
- * @brief Owner of the data provider and the driver of an execution engine's lifecycle.
+ * @brief The driver of an execution engine's lifecycle, run by a controller and watched by a monitor.
  *
- * Construction builds the data provider from the complete input once, so an Engine is valid the moment
- * it is constructed. It always observes through a monitor. A controller is optional: when the caller
- * attaches one, that caller supplies the decisions and drives execution by running the engine, reading
- * the pending decisions from the controller, enqueuing a decision, and resuming until the system is no
- * longer alive. When no controller is attached, the engine instead runs autonomously, mirroring the
- * engine's own greedy application by connecting a greedy controller with the guided evaluator and the
- * time-warp clock, so that a run proceeds to completion.
+ * It is given the parts a run is made of and assembles nothing itself. The data provider arrives built, so
+ * the model is parsed once and every run only draws a scenario from it. The controller supplies every event
+ * that does not come from the engine, whether a user decides them or a composition of dispatchers settles
+ * them without anyone, so there is one path through a run rather than one per mode. A monitor, if there is
+ * one, observes it.
  *
  * The interface mirrors BPMNOS::Execution::Engine: run starts a named scenario from the beginning,
  * resume continues it, and isAlive reports the liveness of the system state. Running is repeatable: each
  * run draws its scenario from the durable data provider without reparsing the model, so running the same
  * model with a different scenario id is a different stochastic sample. A controller holds decision state
- * across a run, so a controller-driven engine is run once and then advanced by resume; a fresh base seed
- * is a fresh Engine.
+ * across a run, so an engine is run once and then advanced by resume.
  */
 class Engine {
 public:
   /**
-   * @brief The choice of data provider and the seed a run is built with.
-   */
-  struct Config {
-    std::string provider = "stochastic";  ///< Data provider kind: "static", "expected", "dynamic", or "stochastic".
-    unsigned int seed = 0;            ///< Base seed for the stochastic provider; each run adds its scenario index.
-  };
-
-  /**
-   * @brief Builds the data provider from the complete input, ready to run.
+   * @brief Takes the parts of a run: the built data provider, the controller driving it, and the monitor
+   * watching it.
    *
-   * @param input The assembled model, lookup tables, and instance, moved in.
-   * @param config The data provider kind and seed.
-   * @param monitor The monitor observing every run. The caller owns it and keeps it alive for the
-   * lifetime of this engine.
-   * @param controller The controller supplying decisions, or a null pointer to run autonomously. The
-   * caller owns it and keeps it alive for the lifetime of this engine.
+   * The provider is this engine's alone and is owned outright. The controller and the monitor are used by
+   * the caller for as long as a run lasts, the one to enqueue what it decides and the other to observe, so
+   * both are shared: the engine holds a share for the run and the caller holds its own, and the order in
+   * which the caller releases them does not matter.
+   *
+   * A run without a controller would fetch no event, so one is required. A monitor is not: an unobserved
+   * run still reports through isAlive, getCurrentTime, and getWeightedObjective, and a caller that wants no
+   * stream should not pay for one, the monitor serialising each notification before it looks for observers.
+   *
+   * @param dataProvider The data provider a scenario is drawn from, moved in.
+   * @param controller The controller supplying the events a run is driven by.
+   * @param monitor The monitor observing every run, or none.
+   * @throws std::runtime_error if the provider or the controller is missing.
    */
-  Engine(Model::Input&& input, Config config, Monitor* monitor, Controller* controller = nullptr);
+  Engine(std::unique_ptr<Model::DataProvider> dataProvider,
+         std::shared_ptr<Controller> controller,
+         std::shared_ptr<Monitor> monitor);
   ~Engine();
   Engine(const Engine&) = delete;
   Engine& operator=(const Engine&) = delete;
@@ -96,20 +95,13 @@ public:
   double getWeightedObjective() const;
 
 private:
-  std::unique_ptr<Model::DataProvider> dataProvider;  ///< Built once from the input; reused across runs.
-  Config config;                                      ///< The provider kind and base seed.
-  Monitor* monitor;                                   ///< Not owned; wired to observe every run.
-  Controller* controller;                             ///< Not owned; wired to supply decisions, or null.
+  std::unique_ptr<Model::DataProvider> dataProvider;  ///< Owned outright; every run draws from it.
+  std::shared_ptr<Controller> controller;             ///< Shared with the caller, which enqueues into it.
+  std::shared_ptr<Monitor> monitor;                   ///< Shared with the caller, which observes through it.
 
   // Per-run state, rebuilt on each run.
   std::unique_ptr<Model::Scenario> scenario;
   std::unique_ptr<Execution::Engine> engine;
-  // Autonomous run wiring, used when no caller controller is attached: mirrors the engine's greedy
-  // application with the guided evaluator, the greedy controller, and the time-warp clock. The evaluator
-  // is declared before the controller so it outlives it.
-  std::unique_ptr<Execution::Evaluator> evaluator;
-  std::unique_ptr<Execution::GreedyController> greedyController;
-  std::unique_ptr<Execution::TimeWarp> timeWarp;
 };
 
 } // namespace BPMNOS::WASM

@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
+import { interactive } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -28,8 +29,8 @@ const instanceCsv =
 const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
-const controller = new module.Controller();
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, controller);
+const controller = new module.Controller(interactive);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
 input.delete();
 
 const log = [];

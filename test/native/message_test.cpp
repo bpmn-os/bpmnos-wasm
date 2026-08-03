@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "Controller.h"
+#include "composition.h"
 #include "Engine.h"
 #include "Input.h"
 #include "Monitor.h"
@@ -59,17 +60,17 @@ int main(int argc, char** argv) {
         "getLookupTableNames reports the model's lookup table");
   input.addLookupTable("costs.csv", costsCsv);
   input.setInstance(instanceCsv);
-  Monitor monitor;
-  Controller controller;
-  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
+  auto monitor = std::make_shared<Monitor>();
+  auto controller = Test::interactiveController();
+  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
 
   json log = json::array();
-  monitor.addObserver([&](const json& entry) { log.push_back(entry); });
+  monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
 
   auto findMessageRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
-    for (const auto& weak : controller.getPendingRequests()) {
+    for (const auto& weak : controller->getPendingRequests()) {
       auto request = weak.lock();
       if (request && request->type == Execution::Observable::Type::MessageDeliveryRequest) {
         return request;
@@ -84,9 +85,9 @@ int main(int argc, char** argv) {
   int delivered = 0;
   int guard = 0;
   while (request && guard++ < 50) {
-    auto candidates = controller.getMessageCandidates(request.get());
+    auto candidates = controller->getMessageCandidates(request.get());
     check(!candidates.empty(), "the delivery offers at least one candidate message");
-    check(controller.enqueueMessageDeliveryDecision(request, candidates.front()).has_value(),
+    check(controller->enqueueMessageDeliveryDecision(request, candidates.front()).has_value(),
           "enqueueMessageDeliveryDecision accepted");
     ++delivered;
     engine.resume();

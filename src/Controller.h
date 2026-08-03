@@ -1,7 +1,6 @@
 #ifndef BPMNOS_WASM_CONTROLLER_H
 #define BPMNOS_WASM_CONTROLLER_H
 
-#include <deque>
 #include <expected>
 #include <memory>
 #include <optional>
@@ -14,6 +13,8 @@
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
 
+#include "EnqueuedEvents.h"
+
 namespace BPMNOS::WASM {
 
 using EnumeratedChoice = std::vector<BPMNOS::number>;
@@ -22,10 +23,14 @@ using BoundedChoice = std::tuple<BPMNOS::number, BPMNOS::number, std::optional<B
 /**
  * @brief The input side of the boundary: an interactive controller, in the engine's native vocabulary.
  *
- * Deriving from the engine's controller, it owns the unambiguous auto dispatchers, the first feasible exit,
- * the first feasible non sequential entry, and the directly addressed message delivery, each evaluated by a
- * guided evaluator, and resolves those without the caller. Everything contested, a choice, the entry of a
- * child of a sequential ad hoc subprocess, and an ambiguous message delivery, it surfaces to the caller.
+ * Deriving from the engine's controller, it is composed of the dispatchers it is given, which it owns and
+ * walks in order on every fetch. What a dispatcher settles is settled without the caller;
+ * what none of them settles waits for what the caller enqueues, which is dispatched by the EnqueuedEvents
+ * among them, so the position of that queue in the composition is its precedence. A composition of the
+ * first feasible exit, the first feasible non sequential entry, the directly addressed message delivery and
+ * the queue therefore leaves the caller the choice, the entry of a child of a sequential ad hoc subprocess
+ * and the ambiguous message delivery, while a composition that adds the remaining greedy dispatchers before
+ * the queue leaves the caller nothing but the clock and the termination.
  *
  * The interface is native and holds no JSON: it surfaces the pending decision requests, and, per request,
  * the candidate choices or messages, and it accepts a decision as the request and its payload. The bridge's
@@ -36,15 +41,24 @@ using BoundedChoice = std::tuple<BPMNOS::number, BPMNOS::number, std::optional<B
  */
 class Controller : public Execution::Controller {
 public:
-  Controller();
-  ~Controller() override;
-
   /**
-   * @brief Connects the auto dispatchers to this controller, then the controller to the engine.
+   * @brief Composes a controller of the dispatchers it walks, wired and complete.
    *
-   * @param mediator The engine to connect to.
+   * They are connected to this controller here rather than when the controller is connected to an engine,
+   * so a constructed controller is a complete one and no dispatcher is connected a second time when a run
+   * is repeated. Whichever of them evaluates keeps the evaluator it was built against, so this class names
+   * no evaluator.
+   *
+   * Exactly one of them is the EnqueuedEvents every enqueue writes into, and its position among the others
+   * is the precedence of what the caller decides. A composition without one could not be driven at all, and
+   * one with several would leave that precedence to whichever was found first, so both are refused here
+   * rather than discovered at the first enqueue.
+   *
+   * @param dispatchers The dispatchers, in the order they are to be walked, moved in.
+   * @throws std::runtime_error if the dispatchers do not hold exactly one EnqueuedEvents.
    */
-  void connect(Execution::Mediator* mediator) override;
+  Controller(std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers);
+  ~Controller() override;
 
   /**
    * @brief Records the current system state as the engine installs it, then forwards the notification, so
@@ -55,8 +69,8 @@ public:
   void notice(const Execution::Observable* observable) override;
 
   /**
-   * @brief Returns the next event to the engine: an auto resolved decision while one is feasible, then a
-   * caller enqueued event that has not expired, and a null pointer when none remains.
+   * @brief Returns the next event to the engine by walking the dispatchers in order: a decision while it is
+   * feasible, any other event at once, and a null pointer when no dispatcher offers one.
    *
    * @param systemState The current system state.
    * @return The next event, or a null pointer when none remains.
@@ -142,10 +156,9 @@ public:
   std::expected<void, std::string> enqueueTerminationEvent();
 
 private:
-  std::unique_ptr<Execution::Evaluator> evaluator;                         ///< guides the auto dispatchers
-  std::vector<std::unique_ptr<Execution::EventDispatcher>> autoDispatchers; ///< tried before the caller queue
-  std::deque<std::shared_ptr<Execution::Event>> queue;                     ///< built events awaiting dispatch
-  const Execution::SystemState* systemState = nullptr;                     ///< cached from the latest notice
+  std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;     ///< walked in order on each fetch
+  EnqueuedEvents* enqueued = nullptr;                                       ///< the queue among them, owned by the list
+  const Execution::SystemState* systemState = nullptr;                      ///< cached from the latest notice
 };
 
 } // namespace BPMNOS::WASM

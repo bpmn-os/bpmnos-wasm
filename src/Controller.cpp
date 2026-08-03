@@ -2,30 +2,36 @@
 
 #include <algorithm>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
 
 namespace BPMNOS::WASM {
 
-Controller::Controller() {
-  // The auto dispatchers mirror the unambiguous half of the greedy controller: the first feasible exit,
-  // the first feasible non sequential entry, and the directly addressed message delivery. The contested
-  // half, choices and the competing sequential entries and message deliveries, is left to the caller.
-  evaluator = std::make_unique<Execution::GuidedEvaluator>();
-  autoDispatchers.push_back(
-    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator.get()));
-  autoDispatchers.push_back(
-    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator.get()));
-  autoDispatchers.push_back(std::make_unique<Execution::InstantDirectMessage>());
+Controller::Controller(std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers)
+  : dispatchers(std::move(dispatchers))
+{
+  // Find the one queue every enqueue writes into. The cast happens here and never again: the list owns the
+  // queue, and the raw pointer is how enqueue reaches it without searching.
+  for (const auto& dispatcher : this->dispatchers) {
+    if (auto* queue = dynamic_cast<EnqueuedEvents*>(dispatcher.get())) {
+      if (enqueued) {
+        throw std::runtime_error("controller composed of several EnqueuedEvents");
+      }
+      enqueued = queue;
+    }
+  }
+  if (!enqueued) {
+    throw std::runtime_error("controller composed without EnqueuedEvents");
+  }
+
+  // A constructed controller is a complete one: its dispatchers are connected to it here rather than when
+  // it is connected to an engine, which is called once per run and would append to the same list again.
+  for (auto& dispatcher : this->dispatchers) {
+    dispatcher->connect(this);
+  }
 }
 
 Controller::~Controller() = default;
-
-void Controller::connect(Execution::Mediator* mediator) {
-  for (auto& dispatcher : autoDispatchers) {
-    dispatcher->connect(this);
-  }
-  Execution::Controller::connect(mediator);
-}
 
 void Controller::notice(const Execution::Observable* observable) {
   // The engine subscribes every controller to the system state and announces each freshly installed one.
@@ -120,7 +126,7 @@ std::expected<void, std::string> Controller::enqueueEntryDecision(
   if (!locked) {
     return std::unexpected("no matching pending decision");
   }
-  queue.push_back(std::make_shared<Execution::EntryEvent>(locked->token, std::move(status)));
+  enqueued->enqueue(std::make_shared<Execution::EntryEvent>(locked->token, std::move(status)));
   return {};
 }
 
@@ -130,7 +136,7 @@ std::expected<void, std::string> Controller::enqueueExitDecision(
   if (!locked) {
     return std::unexpected("no matching pending decision");
   }
-  queue.push_back(std::make_shared<Execution::ExitEvent>(locked->token, std::move(status)));
+  enqueued->enqueue(std::make_shared<Execution::ExitEvent>(locked->token, std::move(status)));
   return {};
 }
 
@@ -140,7 +146,7 @@ std::expected<void, std::string> Controller::enqueueChoiceDecision(
   if (!locked) {
     return std::unexpected("no matching pending decision");
   }
-  queue.push_back(std::make_shared<Execution::ChoiceEvent>(locked->token, std::move(choices)));
+  enqueued->enqueue(std::make_shared<Execution::ChoiceEvent>(locked->token, std::move(choices)));
   return {};
 }
 
@@ -154,7 +160,7 @@ std::expected<void, std::string> Controller::enqueueMessageDeliveryDecision(
   if (!lockedMessage) {
     return std::unexpected("no matching message");
   }
-  queue.push_back(
+  enqueued->enqueue(
     std::make_shared<Execution::MessageDeliveryEvent>(lockedRequest->token, lockedMessage.get()));
   return {};
 }
@@ -163,19 +169,20 @@ std::expected<void, std::string> Controller::enqueueClockTickEvent() {
   if (!systemState) {
     return std::unexpected("no system state");
   }
-  queue.push_back(std::make_shared<Execution::ClockTickEvent>(systemState));
+  enqueued->enqueue(std::make_shared<Execution::ClockTickEvent>(systemState));
   return {};
 }
 
 std::expected<void, std::string> Controller::enqueueTerminationEvent() {
-  queue.push_back(std::make_shared<Execution::TerminationEvent>());
+  enqueued->enqueue(std::make_shared<Execution::TerminationEvent>());
   return {};
 }
 
 std::shared_ptr<Execution::Event> Controller::dispatchEvent(const Execution::SystemState* systemState) {
-  // Auto resolve the unambiguous decisions in priority order, exactly as the greedy controller does: a
-  // decision is dispatched only while feasible, and any other event is forwarded immediately.
-  for (auto& dispatcher : autoDispatchers) {
+  // Walk the composition in order, exactly as the greedy controller walks its own: a decision is dispatched
+  // only while feasible, and any other event is forwarded immediately. The queue is one of the dispatchers
+  // and needs no case of its own, an enqueued decision being an event rather than a Decision.
+  for (auto& dispatcher : dispatchers) {
     if (auto event = dispatcher->dispatchEvent(systemState)) {
       if (auto decision = std::dynamic_pointer_cast<Execution::Decision>(event)) {
         if (decision->reward().has_value()) {
@@ -185,16 +192,6 @@ std::shared_ptr<Execution::Event> Controller::dispatchEvent(const Execution::Sys
       else {
         return event;
       }
-    }
-  }
-  // Then dispatch the caller's enqueued events, skipping any that have expired since they were enqueued.
-  // The engine requires a dispatched event to be live, so an event whose token, request, or message is
-  // gone is void and simply dropped.
-  while (!queue.empty()) {
-    auto event = std::move(queue.front());
-    queue.pop_front();
-    if (!event->expired()) {
-      return event;
     }
   }
   return nullptr;

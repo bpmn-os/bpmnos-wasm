@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
+import { greedy } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -32,7 +33,8 @@ const instanceCsv =
 const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), monitor, null);
+const controller = new module.Controller(greedy);
+const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
 input.delete();
 
 // Two observers, each collecting the stream independently, in the order it arrives.
@@ -68,6 +70,7 @@ engine.run(1);
 check(late.length > 0, 'the late observer receives the next run');
 
 monitor.delete();
+controller.delete();
 engine.delete();
 
 console.error(`fanned ${first.length} entries to each observer, in order`);
