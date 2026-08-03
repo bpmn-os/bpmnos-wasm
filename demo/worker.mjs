@@ -5,9 +5,10 @@
 // tables before running: it parses a model and reports which lookup tables it references, accepts each
 // lookup table's CSV, and then, once instances are supplied, builds an engine and runs it. During the
 // run a monitor posts each observed entry to the page the moment it is recorded, so the log fills in as
-// execution proceeds. No controller is attached, so the engine runs autonomously under the greedy
-// controller. Because the engine is built once from the input, repeated runs on the same instances
-// reuse the parsed model and only advance the scenario, so each run is the next stochastic sample.
+// execution proceeds. The controller is composed greedily, of every deciding dispatcher and a clock, so a
+// run settles everything itself and the page drives nothing. Because the engine is built once from the
+// input, repeated runs on the same instances reuse the parsed model and only advance the scenario, so each
+// run is the next stochastic sample.
 
 import createBPMNOS from './bpmnos.mjs';
 
@@ -19,12 +20,14 @@ let modelXml = null;
 let lookupTables = {};
 let engine = null;
 let monitor = null;
+let controller = null;
 let scenarioId = 0;
 let lastInstances = null;
 let entryCount = 0;
 
 function reset() {
   if (monitor) { monitor.delete(); monitor = null; }
+  if (controller) { controller.delete(); controller = null; }
   if (engine) { engine.delete(); engine = null; }
   lastInstances = null;
 }
@@ -41,7 +44,15 @@ function buildEngine(instances) {
   monitor = new Module.Monitor();
   // Each notification is posted the moment the monitor forwards it, from inside the blocking run.
   monitor.addObserver((entry) => { self.postMessage({ type: 'entry', entry }); entryCount += 1; });
-  engine = new Module.Engine(input, JSON.stringify({ provider: 'stochastic', seed: 0 }), monitor, null);
+  // The greedy composition: every decision settles itself, and the clock, which answers every fetch, comes
+  // after the queue so that what is enqueued is still dispatched.
+  controller = new Module.Controller(JSON.stringify({
+    dispatchers: [
+      'FirstFeasibleExit', 'FirstFeasibleEntry', 'InstantDirectMessage',
+      'FirstEnumeratedChoice', 'CompetingCandidates', 'EnqueuedEvents', 'TimeWarp'
+    ]
+  }));
+  engine = new Module.Engine(input, JSON.stringify({ provider: 'stochastic', seed: 0 }), controller, monitor);
   input.delete();
   scenarioId = 0;
   lastInstances = instances;

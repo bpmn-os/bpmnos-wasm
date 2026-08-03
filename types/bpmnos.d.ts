@@ -109,13 +109,30 @@ export interface BPMNOSModule {
   /** Parse a BPMN model XML into an input the engine is built from. */
   Input: { new (bpmnXml: string): Input };
   /**
-   * Build an engine from an input, a configuration JSON string (for example {"provider":"static"} or
-   * {"provider":"stochastic","seed":1}), a monitor, and a controller or null to run autonomously. The
-   * input is consumed, so one input builds one engine.
+   * Build an engine from an input, the data provider to draw scenarios from (for example
+   * {"provider":"static"} or {"provider":"stochastic","seed":1}), the controller driving every run, and a
+   * monitor observing it or null for an unobserved run. The input is consumed, so one input builds one
+   * engine. A run without a controller would fetch no event, so one is required.
    */
-  Engine: { new (input: Input, configJson: string, monitor: Monitor, controller: Controller | null): Engine };
+  Engine: { new (input: Input, providerJson: string, controller: Controller, monitor: Monitor | null): Engine };
   Monitor: { new (): Monitor };
-  Controller: { new (): Controller };
+  /**
+   * Compose a controller of the dispatchers it walks in the order given, as
+   * {"evaluator":name?,"dispatchers":[name,...]}.
+   *
+   * A dispatcher is named by its class, or, for the ones a greedy dispatcher drives, by the candidates
+   * class that distinguishes it: "FirstFeasibleExit", "FirstFeasibleEntry", "FirstEnumeratedChoice",
+   * "FirstBisectionalChoice", "SequentialEntries", "MessageDeliveries", "CompetingCandidates",
+   * "InstantDirectMessage", "TimeWarp", "Metronome" or "Metronome(ms)", and "EnqueuedEvents". The evaluator
+   * is "GuidedEvaluator" (the default) or "LocalEvaluator", and every evaluating dispatcher shares it.
+   *
+   * What a dispatcher settles is settled without the caller; what none of them settles waits for what the
+   * caller enqueues, which the one "EnqueuedEvents" dispatches, so its position in the list is the
+   * precedence of the caller's decisions. Exactly one is required: without it nothing could be enqueued,
+   * and with several the precedence would be undefined. A clock answers every fetch, so "TimeWarp" and
+   * "Metronome" come last, after the queue.
+   */
+  Controller: { new (compositionJson: string): Controller };
 }
 
 /** Instantiate the WebAssembly module. The wasm is resolved relative to this module. */

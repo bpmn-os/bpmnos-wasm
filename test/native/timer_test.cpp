@@ -14,11 +14,13 @@
 #include <string>
 
 #include "Controller.h"
+#include "composition.h"
 #include "Engine.h"
 #include "Input.h"
 #include "Monitor.h"
 
 using namespace BPMNOS::WASM;
+using namespace BPMNOS;
 using json = nlohmann::ordered_json;
 
 static std::string readFile(const std::string& path) {
@@ -49,22 +51,22 @@ int main(int argc, char** argv) {
 
   Input input(modelXml);
   input.setInstance(instanceCsv);
-  Monitor monitor;
-  Controller controller;
-  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
+  auto monitor = std::make_shared<Monitor>();
+  auto controller = Test::interactiveController();
+  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
 
   json log = json::array();
-  monitor.addObserver([&](const json& entry) { log.push_back(entry); });
+  monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
-  check(controller.getPendingRequests().empty(), "no decision is pending; the timer waits for the clock");
+  check(controller->getPendingRequests().empty(), "no decision is pending; the timer waits for the clock");
   check(engine.isAlive(), "the system is alive, waiting for the timer");
 
   double startTime = engine.getCurrentTime();
   int ticks = 0;
   int guard = 0;
   while (engine.isAlive() && guard++ < 20) {
-    controller.enqueueClockTickEvent();
+    controller->enqueueClockTickEvent();
     double previousTime = engine.getCurrentTime();
     engine.resume();
     check(engine.getCurrentTime() == previousTime + 1, "a clock tick advances time by one");

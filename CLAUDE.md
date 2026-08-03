@@ -13,21 +13,30 @@ and one autonomous run are covered by native and WebAssembly tests that pass wit
 (`Model::getLookupTableNames`), and takes the lookup tables and instance as text. It yields a
 `BPMNOS::Model::Input`, moved out when an `Engine` is built.
 
-`Engine` builds the data provider on construction. `run(scenarioId)` draws a scenario and runs a fresh
-engine, reusing the parse; `resume`, `isAlive`, and `getCurrentTime` follow the execution engine.
+`Engine` is given the parts a run is made of and assembles nothing: the data provider arrives built, the
+controller drives every run, and a monitor, if there is one, observes it. `run(scenarioId)` draws a scenario
+and runs a fresh engine, reusing the parse; `resume`, `isAlive`, and `getCurrentTime` follow the execution
+engine. A controller is required, a run without one fetching no event; a monitor is not, since an
+unobserved run still reports through `isAlive`, `getCurrentTime`, and `getWeightedObjective`.
 
 `Monitor` forwards each token, event, message, and decision request to every observer registered with
 `addObserver`, serialised through `jsonify`, synchronously in the engine's order, keeping no log. An
 observer only observes and is attached before the run.
 
-`Controller` auto-resolves the first feasible exit, the first feasible non-sequential entry, and the
-directly addressed message delivery under a guided evaluator, and leaves the choice, the sequential ad hoc
-entry, and the ambiguous message delivery to the caller. It exposes `getPendingRequests`,
-`getChoiceCandidates` (the attribute and the raw numbers or the bounds), and `getMessageCandidates`, and
-takes a decision as the request weak pointer and its payload through `enqueue*`, returning `std::expected`.
-It attaches no time handler; the caller enqueues a clock tick or a termination. An enqueued decision is
-built into an event at once and dispatched only while `Event::expired()` is false. Omit the controller to
-run under the greedy application.
+`Controller` is the dispatchers it is composed of, connected to it when it is constructed and walked in the
+order given on every fetch. What a dispatcher settles is settled without the caller; what none of them
+settles waits for what the caller enqueues, which `EnqueuedEvents` dispatches, so the position of that queue
+is the precedence of the caller's decisions. Exactly one is required, and the constructor refuses a
+composition with none or with several. How much of a run the caller drives is therefore a composition and
+not a mode: interactive is the exit, the entry, the direct message and the queue; greedy adds the choice and
+the competing candidates before the queue and a clock after it. The names the bindings build from are the
+engine's class names, `Metronome` optionally with its tick duration as `Metronome(500)`.
+
+The controller exposes `getPendingRequests`, `getChoiceCandidates` (the attribute and the raw numbers or the
+bounds), and `getMessageCandidates`, and takes a decision as the request weak pointer and its payload
+through `enqueue*`, returning `std::expected`. An enqueued decision is built into an event at once and
+dispatched only while `Event::expired()` is false. It names no evaluator: whichever dispatcher evaluates
+keeps a share of the one the bindings built.
 
 The WebAssembly build links into `dist/bpmnos.mjs` and `dist/bpmnos.wasm`. `API.md` documents the
 JavaScript API and `types/bpmnos.d.ts` declares it.
@@ -71,11 +80,12 @@ without timers. The pending decision lists prune expired entries only while trav
 self-validates through `Event::expired()`, so the bridge treats the weak pointer, not list membership, as
 liveness, and never holds a strong reference that would keep an engine object alive.
 
-Advancing simulated time by a clock tick is done through the controller, which attaches no time handler:
-the caller enqueues a clock tick, which the controller dispatches as a clock tick event at the next
-fetch, and each tick advances the current time by one. A model with a timer therefore reaches a terminal
-state once the caller has ticked the clock past the trigger, which the native and WebAssembly timer tests
-exercise.
+Advancing simulated time is a matter of composition. A composition without a clock advances only by what the
+caller enqueues: a clock tick reaches the queue, is dispatched at the next fetch, and moves the current time
+by one, so a model with a timer reaches a terminal state once the caller has ticked past the trigger, which
+the native and WebAssembly timer tests exercise. A composition with `TimeWarp` or `Metronome` advances by
+itself, and either must stand behind the queue, because a clock answers every fetch and nothing behind it
+would ever be reached.
 
 ## Branching
 

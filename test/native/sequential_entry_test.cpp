@@ -15,6 +15,7 @@
 #include <string>
 
 #include "Controller.h"
+#include "composition.h"
 #include "Engine.h"
 #include "Input.h"
 #include "Monitor.h"
@@ -51,18 +52,18 @@ int main(int argc, char** argv) {
 
   Input input(modelXml);
   input.setInstance(instanceCsv);
-  Monitor monitor;
-  Controller controller;
-  Engine engine(input.release(), Engine::Config{}, &monitor, &controller);
+  auto monitor = std::make_shared<Monitor>();
+  auto controller = Test::interactiveController();
+  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
 
   json log = json::array();
-  monitor.addObserver([&](const json& entry) { log.push_back(entry); });
+  monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
   engine.run();
 
   // Every other entry is resolved automatically, so the only pending decision is the sequential entry.
   auto findEntryRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
-    for (const auto& weak : controller.getPendingRequests()) {
+    for (const auto& weak : controller->getPendingRequests()) {
       auto request = weak.lock();
       if (request && request->type == Execution::Observable::Type::EntryRequest) {
         return request;
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
   int entered = 0;
   int guard = 0;
   while (request && guard++ < 50) {
-    check(controller.enqueueEntryDecision(request, std::nullopt).has_value(), "enqueueEntryDecision accepted");
+    check(controller->enqueueEntryDecision(request, std::nullopt).has_value(), "enqueueEntryDecision accepted");
     ++entered;
     engine.resume();
     request = findEntryRequest();
