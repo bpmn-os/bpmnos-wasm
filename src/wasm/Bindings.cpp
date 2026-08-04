@@ -275,40 +275,88 @@ json renderChoiceValue(BPMNOS::number value, BPMNOS::ValueType type) {
 }
 
 /**
- * @brief Binds Controller::getChoiceCandidates, reporting the candidate values of a choice request, each
- * rendered by its attribute's type.
+ * @brief Encodes the values a caller has already selected, by the type of the attribute each choice names.
+ *
+ * The inverse of renderChoiceValue, applied position by position. A position holding no value ends the
+ * prefix, since what follows an unmade choice is not made either, and a value beyond the choices the task
+ * states is dropped.
+ *
+ * @param choices The choices of the decision task, in the order they are made.
+ * @param selectedValues The values selected so far, as JSON.
+ * @return The values as numbers, in the same order.
+ */
+std::vector<BPMNOS::number> toChoiceValues(
+  const std::vector<const Model::Choice*>& choices, const json& selectedValues) {
+  std::vector<BPMNOS::number> values;
+  if (!selectedValues.is_array()) {
+    return values;
+  }
+  for (std::size_t index = 0; index < choices.size() && index < selectedValues.size(); ++index) {
+    const json& selectedValue = selectedValues[index];
+    if (selectedValue.is_null()) {
+      break;
+    }
+    if (choices[index]->attribute->type == BPMNOS::STRING) {
+      values.push_back(BPMNOS::to_number(selectedValue.get<std::string>(), BPMNOS::STRING));
+    }
+    else if (selectedValue.is_boolean()) {
+      values.push_back(toNumber(selectedValue.get<bool>() ? 1.0 : 0.0));
+    }
+    else {
+      values.push_back(toNumber(selectedValue.get<double>()));
+    }
+  }
+  return values;
+}
+
+/**
+ * @brief Binds Controller::getChoiceCandidates, reporting the next choice a decision task waits for, given
+ * the values selected so far, with its values rendered by its attribute's type.
+ *
+ * Three answers are distinguished, and a caller acts differently on each. An empty object says the request
+ * no longer stands, so the decision has been overtaken and is to be dropped. A complete flag says every
+ * choice has a value, so the decision may be submitted. Anything else is the next choice to be made.
  *
  * @param controller The controller.
  * @param instanceId The token's instance identity.
  * @param nodeId The token's node identity.
- * @return A JSON array of {attribute, enumeration | {lowerBound, upperBound, multipleOf?}} as a string.
+ * @param selectedValues The values selected so far, as a JSON array string.
+ * @return {} | {"complete":true} | {"attribute":s, enumeration | {lowerBound, upperBound, multipleOf?}}.
  */
 std::string controllerGetChoiceCandidates(
-  Controller& controller, const std::string& instanceId, const std::string& nodeId) {
-  json out = json::array();
+  Controller& controller, const std::string& instanceId, const std::string& nodeId,
+  const std::string& selectedValues) {
+  json out = json::object();
   auto request = resolveRequest(controller, instanceId, nodeId, Execution::Observable::Type::ChoiceRequest).lock();
   if (!request) {
     return out.dump();
   }
-  for (const auto& [attribute, values] : controller.getChoiceCandidates(request.get())) {
-    json entry;
-    entry["attribute"] = attribute->name;
-    if (std::holds_alternative<EnumeratedChoice>(values)) {
-      json enumeration = json::array();
-      for (auto value : std::get<EnumeratedChoice>(values)) {
-        enumeration.push_back(renderChoiceValue(value, attribute->type));
-      }
-      entry["enumeration"] = enumeration;
+
+  auto choices = controller.getChoices(request.get());
+  auto candidates = controller.getChoiceCandidates(
+    request.get(), toChoiceValues(choices, json::parse(selectedValues)));
+
+  if (!candidates.has_value()) {
+    out["complete"] = true;
+    return out.dump();
+  }
+
+  const auto& [attribute, values] = candidates.value();
+  out["attribute"] = attribute->name;
+  if (std::holds_alternative<EnumeratedChoice>(values)) {
+    json enumeration = json::array();
+    for (auto value : std::get<EnumeratedChoice>(values)) {
+      enumeration.push_back(renderChoiceValue(value, attribute->type));
     }
-    else {
-      const auto& bounds = std::get<BoundedChoice>(values);
-      entry["lowerBound"] = renderChoiceValue(std::get<0>(bounds), attribute->type);
-      entry["upperBound"] = renderChoiceValue(std::get<1>(bounds), attribute->type);
-      if (std::get<2>(bounds)) {
-        entry["multipleOf"] = renderChoiceValue(*std::get<2>(bounds), attribute->type);
-      }
+    out["enumeration"] = enumeration;
+  }
+  else {
+    const auto& bounds = std::get<BoundedChoice>(values);
+    out["lowerBound"] = renderChoiceValue(std::get<0>(bounds), attribute->type);
+    out["upperBound"] = renderChoiceValue(std::get<1>(bounds), attribute->type);
+    if (std::get<2>(bounds)) {
+      out["multipleOf"] = renderChoiceValue(*std::get<2>(bounds), attribute->type);
     }
-    out.push_back(std::move(entry));
   }
   return out.dump();
 }
@@ -376,21 +424,16 @@ std::string controllerEnqueueChoiceDecision(Controller& controller, const std::s
   if (!locked) {
     return json{ {"rejected", "no matching pending decision"} }.dump();
   }
-  // Encode each chosen value to a number by its attribute's type, the inverse of renderChoiceValue.
-  auto candidates = controller.getChoiceCandidates(locked.get());
-  const json& choicesJson = decision.at("choices");
-  std::vector<BPMNOS::number> choices;
-  for (std::size_t index = 0; index < candidates.size() && index < choicesJson.size(); ++index) {
-    const auto* attribute = std::get<0>(candidates[index]);
-    const json& value = choicesJson[index];
-    if (attribute->type == BPMNOS::STRING) {
-      choices.push_back(BPMNOS::to_number(value.get<std::string>(), BPMNOS::STRING));
-    }
-    else {
-      choices.push_back(toNumber(value.get<double>()));
-    }
-  }
-  return enqueueResult(controller.enqueueChoiceDecision(request, std::move(choices)));
+  // The values are encoded by the type of the attribute each choice names, which is read from the choices
+  // themselves rather than from their candidates: what a choice may take is an answer for a prefix, and
+  // nothing here needs one.
+  //
+  // They stay positional, where the engine's own record of a choice names its attributes. A decision task
+  // is not forbidden to state two choices on the same attribute, and a named object would merge them and
+  // lose a value, which a record being read can afford and a decision being made cannot.
+  auto choices = controller.getChoices(locked.get());
+  return enqueueResult(controller.enqueueChoiceDecision(
+    request, toChoiceValues(choices, decision.at("choices"))));
 }
 
 /**

@@ -82,14 +82,21 @@ int main(int argc, char** argv) {
   int guard = 0;
   while (request && guard++ < 50) {
     ++choiceCount;
+
+    // The candidates are asked for one choice at a time, each against the values already selected, since
+    // what a later choice admits depends on the earlier ones. Nothing is returned once every choice has a
+    // value, which is what ends the walk.
     std::vector<BPMNOS::number> choices;
-    for (const auto& [attribute, values] : controller->getChoiceCandidates(request.get())) {
+    while (auto candidates = controller->getChoiceCandidates(request.get(), choices)) {
+      const auto& [attribute, values] = candidates.value();
       check(std::holds_alternative<EnumeratedChoice>(values), "the choice offers an enumeration");
       const auto& enumeration = std::get<EnumeratedChoice>(values);
       check(!enumeration.empty(), "the enumeration offers allowed values");
       choices.push_back(enumeration.front());
       enqueuedChoice = static_cast<double>(enumeration.front());
     }
+    check(choices.size() == controller->getChoices(request.get()).size(),
+      "the walk ends with a value for every choice");
     check(controller->enqueueChoiceDecision(request, choices).has_value(), "enqueueChoiceDecision accepted");
     engine.resume();
     request = findChoiceRequest();
@@ -110,6 +117,65 @@ int main(int argc, char** argv) {
     }
   }
   check(applied, "the enqueued choice was applied on Activity_1 at COMPLETED");
+
+  // A decision task whose second choice depends on the first. Its bounds are `base <= level <= base + 4`
+  // with a discretizer of two, so choosing a base of two admits the even numbers from two to six, and
+  // choosing five admits six and eight — a different set, and one whose lower bound is not the bound the
+  // model states, since the admitted values are the multiples of the discretizer and five is not one.
+  {
+    std::string dependentXml = readFile(fixtureDir + "/DecisionTask_with_dependent_choices.bpmn");
+    std::string dependentCsv =
+      "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
+      "Instance_1; Process_1;\n";
+
+    Input dependentInput(dependentXml);
+    dependentInput.setInstance(dependentCsv);
+    auto dependentMonitor = std::make_shared<Monitor>();
+    auto dependentController = Test::interactiveController();
+    Engine dependentEngine(
+      std::make_unique<Model::StochasticDataProvider>(dependentInput.release(), 0),
+      dependentController, dependentMonitor);
+
+    dependentEngine.run();
+
+    std::shared_ptr<const Execution::DecisionRequest> dependent;
+    for (const auto& weak : dependentController->getPendingRequests()) {
+      auto candidate = weak.lock();
+      if (candidate && candidate->type == Execution::Observable::Type::ChoiceRequest) {
+        dependent = candidate;
+      }
+    }
+    check(dependent != nullptr, "the engine stopped at the dependent choice");
+    check(dependentController->getChoices(dependent.get()).size() == 2, "the task states two choices");
+
+    auto boundsFor = [&](std::vector<BPMNOS::number> selectedValues) {
+      auto candidates = dependentController->getChoiceCandidates(dependent.get(), selectedValues);
+      check(candidates.has_value(), "a second choice is offered");
+      const auto& [attribute, values] = candidates.value();
+      check(attribute->name == "level", "the second choice is of the level");
+      check(std::holds_alternative<BoundedChoice>(values), "the second choice is bounded");
+      return std::get<BoundedChoice>(values);
+    };
+
+    auto first = dependentController->getChoiceCandidates(dependent.get(), {});
+    check(first.has_value(), "a first choice is offered");
+    check(std::get<0>(first.value())->name == "base", "the first choice is of the base");
+
+    auto withBaseTwo = boundsFor({ 2 });
+    check((double)std::get<0>(withBaseTwo) == 2.0, "a base of two admits from two");
+    check((double)std::get<1>(withBaseTwo) == 6.0, "a base of two admits up to six");
+    check(std::get<2>(withBaseTwo).has_value() && (double)*std::get<2>(withBaseTwo) == 2.0,
+      "the discretizer is two");
+
+    auto withBaseFive = boundsFor({ 5 });
+    check((double)std::get<0>(withBaseFive) == 6.0,
+      "a base of five admits from six, the first multiple of the discretizer at or above the bound");
+    check((double)std::get<1>(withBaseFive) == 8.0,
+      "a base of five admits up to eight, the last multiple at or below the bound");
+
+    check(!dependentController->getChoiceCandidates(dependent.get(), { 2, 4 }).has_value(),
+      "nothing is offered once every choice has a value");
+  }
 
   std::cerr << "ALL PASSED (choice)\n";
   return 0;

@@ -48,11 +48,19 @@ while (pending.length > 0 && guard++ < 50) {
   check(pending.every((d) => d.type === 'choice'), 'the only pending decision is a choice');
   const request = pending[0];
   choiceCount += 1;
+  // The candidates are asked for one choice at a time, each against the values already selected, and the
+  // walk ends when the answer says every choice has a value.
   const choices = [];
-  for (const choice of JSON.parse(controller.getChoiceCandidates(request.instanceId, request.nodeId))) {
-    check(Array.isArray(choice.enumeration) && choice.enumeration.length > 0,
+  for (;;) {
+    const next = JSON.parse(
+      controller.getChoiceCandidates(request.instanceId, request.nodeId, JSON.stringify(choices)));
+    check(!('complete' in next) || next.complete === true, 'the answer is a choice or says it is complete');
+    if (next.complete) {
+      break;
+    }
+    check(Array.isArray(next.enumeration) && next.enumeration.length > 0,
       'the choice offers an enumeration of allowed values');
-    enqueuedChoice = choice.enumeration[0];
+    enqueuedChoice = next.enumeration[0];
     choices.push(enqueuedChoice);
   }
   const decision = {
@@ -72,5 +80,64 @@ check(
   log.some((e) => e.token && e.token.nodeId === 'Activity_1' && e.token.state === 'COMPLETED'
     && e.token.status && e.token.status.choice === enqueuedChoice),
   'the enqueued choice was applied on Activity_1 at COMPLETED');
+
+engine.delete();
+controller.delete();
+monitor.delete();
+
+// A decision task whose second choice depends on the first: `base <= level <= base + 4` with a discretizer
+// of two. A base of two admits the even numbers from two to six; a base of five admits six and eight, the
+// lower one being the first multiple of the discretizer at or above the bound rather than the bound itself.
+{
+  const dependentXml = readFileSync(
+    join(root, 'test', 'fixtures', 'DecisionTask_with_dependent_choices.bpmn'), 'utf8');
+  const dependentCsv = 'INSTANCE_ID; NODE_ID; INITIALIZATION\nInstance_1; Process_1;\n';
+
+  const dependentInput = new module.Input(dependentXml);
+  dependentInput.setInstance(dependentCsv);
+  const dependentMonitor = new module.Monitor();
+  const dependentController = new module.Controller(interactive);
+  const dependentEngine = new module.Engine(
+    dependentInput, JSON.stringify({ provider: 'static' }), dependentController, dependentMonitor);
+  dependentInput.delete();
+
+  dependentEngine.run(0);
+
+  const [ request ] = JSON.parse(dependentController.getPendingDecisions())
+    .filter((decision) => decision.type === 'choice');
+  check(!!request, 'the engine stopped at the dependent choice');
+
+  const ask = (selectedValues) => JSON.parse(dependentController.getChoiceCandidates(
+    request.instanceId, request.nodeId, JSON.stringify(selectedValues)));
+
+  const first = ask([]);
+  check(first.attribute === 'base', 'the first choice is of the base');
+  check(JSON.stringify(first.enumeration) === JSON.stringify([ 2, 5 ]),
+    'the first choice offers the enumeration of the model');
+
+  const withBaseTwo = ask([ 2 ]);
+  check(withBaseTwo.attribute === 'level', 'the second choice is of the level');
+  check(withBaseTwo.lowerBound === 2 && withBaseTwo.upperBound === 6 && withBaseTwo.multipleOf === 2,
+    'a base of two admits two to six by two');
+
+  const withBaseFive = ask([ 5 ]);
+  check(withBaseFive.lowerBound === 6,
+    'a base of five admits from six, the first multiple of the discretizer at or above the bound');
+  check(withBaseFive.upperBound === 8,
+    'a base of five admits up to eight, the last multiple at or below the bound');
+
+  check(ask([ 2, 4 ]).complete === true, 'nothing is offered once every choice has a value');
+
+  check(!('rejected' in JSON.parse(dependentController.enqueueChoiceDecision(JSON.stringify({
+    instanceId: request.instanceId, nodeId: request.nodeId, choices: [ 5, 8 ]
+  })))), 'a dependent choice is accepted');
+  dependentEngine.resume();
+  check(JSON.parse(dependentController.getPendingDecisions()).length === 0,
+    'no decision is pending after the dependent choice');
+
+  dependentEngine.delete();
+  dependentController.delete();
+  dependentMonitor.delete();
+}
 
 console.error('ALL PASSED (WebAssembly choice)');

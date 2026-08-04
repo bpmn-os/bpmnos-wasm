@@ -65,11 +65,22 @@ export interface Controller {
    */
   getPendingDecisions(): string;
   /**
-   * Return, per choice of the decision task at the given token, the candidate values as a JSON array
-   * string: [{"attribute":s,"enumeration":[...]}] for a drop-down, or
-   * [{"attribute":s,"lowerBound":n,"upperBound":n,"multipleOf":n?}] for a slider.
+   * Return the next choice the decision task at the given token waits for, given the values selected so
+   * far as a JSON array string, as a JSON object string. A decision task states its choices in order and a
+   * later one may depend on the earlier ones, since the engine writes each chosen value into the status
+   * before it evaluates the next condition, so the candidates are asked for one choice at a time.
+   *
+   * `{}` says the request no longer stands and the decision is to be dropped; `{"complete":true}` says
+   * every choice has a value and the decision may be submitted; otherwise the answer is the next choice,
+   * as {"attribute":s,"enumeration":[...]} for a drop-down or
+   * {"attribute":s,"lowerBound":n,"upperBound":n,"multipleOf":n?} for a number input.
+   *
+   * The bounds are the multiples of the discretizer within the condition's bounds, so the first is not
+   * necessarily the bound the model states and a control stepping from it lands on values the engine
+   * admits. Strictness and the attribute's type are already resolved. A bounded choice stating no
+   * discretizer, which a model should not do, is reported with its bounds unmoved and no multipleOf.
    */
-  getChoiceCandidates(instanceId: string, nodeId: string): string;
+  getChoiceCandidates(instanceId: string, nodeId: string, selectedValues: string): string;
   /**
    * Queue the entry of a waiting token, identified by its instance and node, for the next resume. The
    * decision is {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or

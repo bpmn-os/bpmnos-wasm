@@ -32,8 +32,9 @@ not a mode: interactive is the exit, the entry, the direct message and the queue
 the competing candidates before the queue and a clock after it. The names the bindings build from are the
 engine's class names, `Metronome` optionally with its tick duration as `Metronome(500)`.
 
-The controller exposes `getPendingRequests` and `getChoiceCandidates` (the attribute and the raw numbers or
-the bounds), resolves an enqueued delivery to a message through `getMessageCandidates`, and takes a decision
+The controller exposes `getPendingRequests`, `getChoices` (the choices a decision task states, in order) and
+`getChoiceCandidates` (the attribute and the raw numbers or the bounds of the next choice, given the values
+already selected), resolves an enqueued delivery to a message through `getMessageCandidates`, and takes a decision
 as the request weak pointer and its payload
 through `enqueue*`, returning `std::expected`. An enqueued decision is built into an event at once and
 dispatched only while `Event::expired()` is false. It names no evaluator: whichever dispatcher evaluates
@@ -84,7 +85,27 @@ defined either as an enumeration or as a bounded range, and `getEnumeration` and
 unless called for the matching kind, so the bridge discriminates on the choice's `enumeration` member and
 returns the raw numbers or the bounds with `multipleOf`; the bindings then render each value in the
 attribute's type (`ValueType`), so a string choice reads as its labels through the string registry, not
-as indices. A static scenario reports completion only once simulated time has passed the last
+as indices.
+
+The choices of one decision task are not independent. `DecisionTask::determineAlternatives` writes each
+chosen value into the status through `AttributeRegistry::setValue` before it evaluates the condition of the
+next choice, so what a later choice admits is a function of the earlier ones and the candidates can only be
+answered for a prefix of values. The bridge copies the status, the data and the globals before applying
+anything, the data as `BPMNOS::Values` and not as the `SharedValues` the token holds, since that is a vector
+of references and copying it would share the referents and make a question into an act. It stamps the
+current time onto the copied status first, as `Engine::process` stamps it before applying a choice, so that
+a condition reading the timestamp is evaluated against the value the engine will use.
+
+The bounds a choice reports are moved to the multiples of its discretizer. `Choice::getBounds` has by then
+resolved two things that are independent of each other: strictness, by moving a strict bound inward by
+`BPMNOS_NUMBER_PRECISION`, so the pair is inclusive whichever of `<` and `<=` the condition wrote; and the
+attribute's type, by narrowing the interval to the integers within it for everything but a decimal, so that
+`0.5 <= x <= 1.5` on an integer admits only one. Neither is recomputed. What the bridge adds is the move to
+the grid, because the values admitted are the multiples of the discretizer counted from zero while a
+caller's control counts its steps from the minimum it is given, and the two agree only once that minimum is
+itself a multiple. A bounded choice stating no discretizer is not asked of `getEnumeration`, which throws
+for a decimal and silently assumes a step of one for an integer or a boolean; its bounds are reported
+unmoved instead. A static scenario reports completion only once simulated time has passed the last
 instantiation, so a model with a single instance at time zero stays alive after all its work is done
 until time advances, which is why a clock is needed to reach a formally terminal state even for a model
 without timers. The pending decision lists prune expired entries only while traversed, and a built event

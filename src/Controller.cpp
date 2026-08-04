@@ -1,6 +1,7 @@
 #include "Controller.h"
 
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -59,35 +60,83 @@ std::vector<std::weak_ptr<const Execution::DecisionRequest>> Controller::getPend
   return requests;
 }
 
-std::vector<std::tuple<const Model::Attribute*, std::variant<EnumeratedChoice, BoundedChoice>>>
-Controller::getChoiceCandidates(const Execution::DecisionRequest* request) const {
-  std::vector<std::tuple<const Model::Attribute*, std::variant<EnumeratedChoice, BoundedChoice>>> candidates;
+std::vector<const Model::Choice*> Controller::getChoices(const Execution::DecisionRequest* request) const {
+  std::vector<const Model::Choice*> choices;
   const auto* token = request->token;
   if (!token->node || !token->node->extensionElements) {
-    return candidates;
+    return choices;
   }
   auto* extensionElements = token->node->extensionElements->as<Model::ExtensionElements>();
   if (!extensionElements) {
-    return candidates;
+    return choices;
   }
   for (const auto& choice : extensionElements->choices) {
-    if (!choice->enumeration.empty()) {
-      candidates.emplace_back(
-        choice->attribute, choice->getEnumeration(token->status, *token->data, token->globals));
-    }
-    else {
-      auto bounds = choice->getBounds(token->status, *token->data, token->globals);
-      std::optional<BPMNOS::number> multipleOf;
-      if (choice->multipleOf) {
-        auto step = choice->multipleOf->execute(token->status, *token->data, token->globals);
-        if (step.has_value()) {
-          multipleOf = step.value();
-        }
-      }
-      candidates.emplace_back(choice->attribute, BoundedChoice{bounds.first, bounds.second, multipleOf});
+    choices.push_back(choice.get());
+  }
+  return choices;
+}
+
+std::optional<std::tuple<const Model::Attribute*, std::variant<EnumeratedChoice, BoundedChoice>>>
+Controller::getChoiceCandidates(
+  const Execution::DecisionRequest* request, const std::vector<BPMNOS::number>& selectedValues) const {
+  auto choices = getChoices(request);
+  if (selectedValues.size() >= choices.size()) {
+    return std::nullopt; // every choice has a value, so there is no next one
+  }
+
+  // Copied before anything is applied, so that computing an answer cannot write the run. The data is
+  // copied by value: SharedValues holds references, and copying it would share the referents and make this
+  // an act rather than a question. The current time is stamped as Engine::process stamps it before it
+  // applies a choice, so that a condition reading the timestamp is evaluated against the value the engine
+  // will use rather than the one the token was last noticed at.
+  const auto* token = request->token;
+  BPMNOS::Values status(token->status);
+  BPMNOS::Values data(*token->data);
+  BPMNOS::Values globals(token->globals);
+  if (systemState) {
+    status[Model::ExtensionElements::Index::Timestamp] = systemState->currentTime;
+  }
+
+  // The choices before the next one are applied in order, exactly as DecisionTask::determineAlternatives
+  // applies them, since each is what the one after it is evaluated against.
+  for (std::size_t i = 0; i < selectedValues.size(); ++i) {
+    choices[i]->attributeRegistry.setValue(choices[i]->attribute, status, data, globals, selectedValues[i]);
+  }
+
+  const auto* choice = choices[selectedValues.size()];
+
+  if (!choice->enumeration.empty()) {
+    return std::make_tuple(choice->attribute, EnumeratedChoice(choice->getEnumeration(status, data, globals)));
+  }
+
+  auto [lower, upper] = choice->getBounds(status, data, globals);
+
+  // A bounded choice should state a discretizer and a model may nonetheless omit one. getEnumeration
+  // throws for a decimal in that case and silently assumes a step of one for an integer or a boolean, so
+  // it is not asked; the bounds are reported as they are and the caller is told there is no discretizer.
+  std::optional<BPMNOS::number> multipleOf;
+  if (choice->multipleOf) {
+    if (auto step = choice->multipleOf->execute(status, data, globals); step.has_value()) {
+      multipleOf = step.value();
     }
   }
-  return candidates;
+
+  if (multipleOf.has_value() && (double)multipleOf.value() != 0.0) {
+    // Moved to the grid the engine admits, which is the multiples of the discretizer counted from zero and
+    // not from the lower bound. A caller's control counts its steps from the minimum it is given, so the
+    // two agree only once that minimum is itself a multiple.
+    double delta = std::abs((double)multipleOf.value());
+    double first = delta * std::ceil((double)lower / delta);
+    double last = delta * std::floor((double)upper / delta);
+    if (first > last) {
+      return std::make_tuple(choice->attribute, EnumeratedChoice{}); // the grid holds nothing between them
+    }
+    lower = first;
+    upper = last;
+    multipleOf = delta;
+  }
+
+  return std::make_tuple(choice->attribute, BoundedChoice{lower, upper, multipleOf});
 }
 
 std::vector<std::weak_ptr<const Execution::Message>> Controller::getMessageCandidates(

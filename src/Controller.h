@@ -86,15 +86,46 @@ public:
   std::vector<std::weak_ptr<const Execution::DecisionRequest>> getPendingRequests() const;
 
   /**
-   * @brief Returns, per choice of the request's decision task, the attribute and the candidate values the
-   * caller may pick: an enumeration of raw numbers, or the bounds. The bridge renders the numbers by the
-   * attribute's type.
+   * @brief Returns the attribute and the candidate values of the next choice of the request's decision
+   * task, given the values already chosen for the choices before it.
+   *
+   * A decision task states its choices in order, and what a later one admits depends on the earlier ones:
+   * the engine writes each chosen value into the status before it evaluates the next condition. So the
+   * candidates are not a property of the model but an answer for a prefix of values, and this reports the
+   * answer for one prefix at a time. Given as many values as the task has choices, there is no next choice
+   * and nothing is returned.
+   *
+   * The status, the data and the globals are copied before anything is applied, the data by value and not
+   * by the references SharedValues holds, so that computing an answer cannot write the run. The current
+   * time is stamped onto the copied status first, as the engine stamps it before it applies a choice, so
+   * that a condition reading the timestamp is evaluated against the value the engine will use.
+   *
+   * The bounds are those of Choice::getBounds, moved to the first and the last multiple of the discretizer
+   * within them. That function has already resolved strictness, by moving a strict bound inward by the
+   * smallest representable increment, and has already narrowed the interval to the integers within it for
+   * every type but the decimal; both are the engine's to decide and neither is recomputed here. The move to
+   * the discretizer is this bridge's, because the values admitted are its multiples counted from zero while
+   * a caller's control counts its steps from the minimum it is given, and the two agree only where that
+   * minimum is a multiple. Where a bounded choice states no discretizer, which a model may do although it
+   * should not, the bounds are reported unmoved and no discretizer is reported with them.
    *
    * @param request The choice decision request.
-   * @return One {attribute, enumeration | bounds} per choice.
+   * @param selectedValues The values already chosen, in the order the choices are made.
+   * @return The attribute and the candidates of the next choice, or nothing where every choice has a value.
    */
-  std::vector<std::tuple<const Model::Attribute*, std::variant<EnumeratedChoice, BoundedChoice>>>
-  getChoiceCandidates(const Execution::DecisionRequest* request) const;
+  std::optional<std::tuple<const Model::Attribute*, std::variant<EnumeratedChoice, BoundedChoice>>>
+  getChoiceCandidates(const Execution::DecisionRequest* request, const std::vector<BPMNOS::number>& selectedValues) const;
+
+  /**
+   * @brief Returns the choices of the request's decision task, in the order they are made.
+   *
+   * The bridge needs them to encode a caller's values by each attribute's type, which it must be able to do
+   * without asking for candidates it has no other use for.
+   *
+   * @param request The choice decision request.
+   * @return The choices, empty where the token stands at no decision task.
+   */
+  std::vector<const Model::Choice*> getChoices(const Execution::DecisionRequest* request) const;
 
   /**
    * @brief Returns the created pool messages that may be delivered to the request's waiting token, whose

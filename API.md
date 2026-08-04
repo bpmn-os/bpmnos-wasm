@@ -112,13 +112,23 @@ greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` be
 
 - `getPendingDecisions(): string` — `[{"type": "entry"|"exit"|"choice"|"messageDelivery", "instanceId":
   s, "nodeId": s}]`.
-- `getChoiceCandidates(instanceId: string, nodeId: string): string` — per choice of the decision task,
-  `{"attribute": s, "enumeration": [v, …]}` or `{"attribute": s, "lowerBound": n, "upperBound": n,
-  "multipleOf": n?}`, each value in the choice attribute's type.
+- `getChoiceCandidates(instanceId: string, nodeId: string, selectedValues: string): string` — the next
+  choice the decision task waits for, given the values selected so far. `{}` where the request no longer
+  stands, `{"complete": true}` where every choice has a value, and otherwise `{"attribute": s,
+  "enumeration": [v, …]}` or `{"attribute": s, "lowerBound": n, "upperBound": n, "multipleOf": n?}`, each
+  value in the choice attribute's type. A decision task states its choices in order and a later one may
+  depend on the earlier ones, so the candidates are asked for one choice at a time, each against the
+  values already selected. The bounds are the multiples of the discretizer within the condition's bounds,
+  so the first is not necessarily the bound the model states; strictness and the attribute's type have
+  already been resolved, and a bounded choice stating no discretizer is reported with its bounds unmoved
+  and no `multipleOf`.
 - `enqueueEntryDecision(json)` / `enqueueExitDecision(json)` — `{"instanceId": s, "nodeId": s, "status":
   [v, …]?}`.
 - `enqueueChoiceDecision(json)` — `{"instanceId": s, "nodeId": s, "choices": [v, …]}`, one value per
-  choice of the decision task.
+  choice of the decision task, in the order the choices are stated. The values are positional where the
+  record of a choice names its attributes, because a decision task is not forbidden to state two choices
+  on the same attribute: a named object would merge them and lose a value, which a record being read can
+  afford and a decision being made cannot.
 - `enqueueMessageDeliveryDecision(json)` — `{"instanceId": s, "nodeId": s, "origin": s, "sender": s}`.
 - `enqueueClockTickEvent()` — advance the clock by one at the next resume.
 - `enqueueTerminationEvent()` — end the run at the next resume.
@@ -145,8 +155,13 @@ engine.run(0);
 let pending = JSON.parse(controller.getPendingDecisions());
 while (pending.length) {
   const d = pending[0];
-  const candidates = JSON.parse(controller.getChoiceCandidates(d.instanceId, d.nodeId));
-  const choices = candidates.map(c => c.enumeration[0]);
+  const choices = [];
+  for (;;) {
+    const next = JSON.parse(
+      controller.getChoiceCandidates(d.instanceId, d.nodeId, JSON.stringify(choices)));
+    if (next.complete || !next.attribute) break;
+    choices.push(next.enumeration ? next.enumeration[0] : next.lowerBound);
+  }
   controller.enqueueChoiceDecision(JSON.stringify({ instanceId: d.instanceId, nodeId: d.nodeId, choices }));
   engine.resume();
   pending = JSON.parse(controller.getPendingDecisions());
