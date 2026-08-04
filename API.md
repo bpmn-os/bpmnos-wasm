@@ -88,12 +88,6 @@ greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` be
 
 - `getPendingDecisions(): string` — `[{"type": "entry"|"exit"|"choice"|"messageDelivery", "instanceId":
   s, "nodeId": s}]`.
-- `getSequentialPerformers(): string` — `[{"performer": {"processId": s, "instanceId": s, "nodeId": s?},
-  "performing": {…} | null, "waiting": [{…}]}]`, each token named by the keys its own record carries and
-  the node absent for a token standing at a process. A performer is reported while its token is busy,
-  which is while the scope it stands in runs, and `waiting` is in the order the tokens became ready. This
-  cannot be read from the pending decisions: while a performer is busy the entry requests of everything
-  waiting under it are withdrawn, and one that has been asked for nothing has none at all.
 - `getChoiceCandidates(instanceId: string, nodeId: string): string` — per choice of the decision task,
   `{"attribute": s, "enumeration": [v, …]}` or `{"attribute": s, "lowerBound": n, "upperBound": n,
   "multipleOf": n?}`, each value in the choice attribute's type.

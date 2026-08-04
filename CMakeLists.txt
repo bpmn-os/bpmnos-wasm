@@ -58,7 +58,7 @@ if(NOT EMSCRIPTEN)
   enable_testing()
   # Each native test drives a fixture through the bridge and takes the fixture directory as its
   # one argument, so a test does not depend on the working directory.
-  foreach(scenario IN ITEMS timer choice sequential_entry sequential_performer message greedy)
+  foreach(scenario IN ITEMS timer choice sequential_entry message greedy)
     add_executable(native_${scenario}_test test/native/${scenario}_test.cpp)
     target_link_libraries(native_${scenario}_test PRIVATE
       bpmnos_wasm bpmnos-execution bpmnos-model bpmn++ xerces-c pthread)

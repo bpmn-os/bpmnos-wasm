@@ -86,35 +86,6 @@ public:
   std::vector<std::weak_ptr<const Execution::DecisionRequest>> getPendingRequests() const;
 
   /**
-   * @brief A sequential performer as the engine holds it.
-   *
-   * A sequential ad hoc subprocess performs its children one at a time, and the token standing at the node
-   * that performs them holds what it conducts and what waits for it. The bridge reports that bookkeeping
-   * rather than the model it follows from, since only the running state says which tokens queue where.
-   */
-  struct SequentialPerformer {
-    std::weak_ptr<const Execution::Token> performer;              ///< the token standing at the performer node
-    std::weak_ptr<const Execution::Token> performing;             ///< the activity token it conducts, if any
-    std::vector<std::weak_ptr<const Execution::Token>> waiting;   ///< the tokens awaiting entry under it
-  };
-
-  /**
-   * @brief Returns every sequential performer of the run, read from the cached system state.
-   *
-   * A performer is reported for as long as its token is busy, which is for as long as the scope it stands
-   * in runs, and its waiting tokens are reported in the order the engine holds them, which is the order in
-   * which they became ready.
-   *
-   * The pending entry decisions cannot answer this: while a performer is busy the entry requests of
-   * everything waiting under it are withdrawn, and a performer that has been asked for nothing has none at
-   * all. The state machines are therefore descended and every busy token standing where a performer stands
-   * is reported.
-   *
-   * @return The sequential performers, each token possibly already expired.
-   */
-  std::vector<SequentialPerformer> getSequentialPerformers() const;
-
-  /**
    * @brief Returns, per choice of the request's decision task, the attribute and the candidate values the
    * caller may pick: an enumeration of raw numbers, or the bounds. The bridge renders the numbers by the
    * attribute's type.
