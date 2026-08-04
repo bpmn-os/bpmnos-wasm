@@ -33,10 +33,17 @@ the competing candidates before the queue and a clock after it. The names the bi
 engine's class names, `Metronome` optionally with its tick duration as `Metronome(500)`.
 
 The controller exposes `getPendingRequests`, `getChoiceCandidates` (the attribute and the raw numbers or the
-bounds), and `getMessageCandidates`, and takes a decision as the request weak pointer and its payload
+bounds), `getMessageCandidates`, and `getSequentialPerformers`, and takes a decision as the request weak
+pointer and its payload
 through `enqueue*`, returning `std::expected`. An enqueued decision is built into an event at once and
 dispatched only while `Event::expired()` is false. It names no evaluator: whichever dispatcher evaluates
 keeps a share of the one the bindings built.
+
+What a sequential performer conducts and what waits for it is read by descending the state machines of the
+cached system state rather than from the pending decisions, since a busy performer has had the entry requests
+of everything under it withdrawn and one that has been asked for nothing has none. A performer is a busy
+token standing where the model set `hasSequentialPerformer`, which it does for whatever carries the role and
+for an ad hoc subprocess performing for its own children.
 
 The WebAssembly build links into `dist/bpmnos.mjs` and `dist/bpmnos.wasm`. `API.md` documents the
 JavaScript API and `types/bpmnos.d.ts` declares it.

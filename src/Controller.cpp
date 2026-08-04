@@ -59,6 +59,83 @@ std::vector<std::weak_ptr<const Execution::DecisionRequest>> Controller::getPend
   return requests;
 }
 
+namespace {
+
+/**
+ * @brief Whether the token stands where a sequential performer stands.
+ *
+ * The model marks the node that performs, whether it carries the role itself or is an ad hoc subprocess
+ * performing for its own children, and a token carrying no node stands at the process. A performer is
+ * reported while it is busy, which is while the scope it stands in runs.
+ *
+ * @param token The token.
+ * @return Whether the token is a busy performer.
+ */
+bool isSequentialPerformer(const Execution::Token& token) {
+  if (!token.busy()) {
+    return false;
+  }
+  const auto* baseElement = token.node
+    ? static_cast<const BPMN::Node*>(token.node)
+    : static_cast<const BPMN::Node*>(token.owner->process);
+  const auto* extensionElements = baseElement->extensionElements
+    ? baseElement->extensionElements->represents<const Model::ExtensionElements>()
+    : nullptr;
+  return extensionElements && extensionElements->hasSequentialPerformer;
+}
+
+/**
+ * @brief Reports the performers held by one state machine and by everything running within it.
+ *
+ * A token owns the state machine of the scope it stands in, and a scope holds the event subprocesses it
+ * has triggered, so the descent follows both.
+ *
+ * @param stateMachine The state machine to descend.
+ * @param performers The performers found so far, appended to.
+ */
+void collectSequentialPerformers(
+  const Execution::StateMachine& stateMachine,
+  std::vector<Controller::SequentialPerformer>& performers) {
+  for (const auto& token : stateMachine.tokens) {
+    if (isSequentialPerformer(*token)) {
+      Controller::SequentialPerformer performer;
+      performer.performer = token;
+      if (token->performing) {
+        performer.performing = token->performing->weak_from_this();
+      }
+      // The list prunes what has expired as it is walked, which is a write, and the cached state is held
+      // by const pointer: the walk is the engine's own and the constness is the cache's, not the list's.
+      auto& waiting = const_cast<Execution::Token&>(*token).pendingSequentialEntries;
+      for (const auto& [ candidate ] : waiting) {
+        performer.waiting.push_back(candidate);
+      }
+      performers.push_back(std::move(performer));
+    }
+    if (token->owned) {
+      collectSequentialPerformers(*token->owned, performers);
+    }
+  }
+  if (stateMachine.interruptingEventSubProcess) {
+    collectSequentialPerformers(*stateMachine.interruptingEventSubProcess, performers);
+  }
+  for (const auto& eventSubProcess : stateMachine.nonInterruptingEventSubProcesses) {
+    collectSequentialPerformers(*eventSubProcess, performers);
+  }
+}
+
+} // namespace
+
+std::vector<Controller::SequentialPerformer> Controller::getSequentialPerformers() const {
+  std::vector<SequentialPerformer> performers;
+  if (!systemState) {
+    return performers;
+  }
+  for (const auto& instance : systemState->instances) {
+    collectSequentialPerformers(*instance, performers);
+  }
+  return performers;
+}
+
 std::vector<std::tuple<const Model::Attribute*, std::variant<EnumeratedChoice, BoundedChoice>>>
 Controller::getChoiceCandidates(const Execution::DecisionRequest* request) const {
   std::vector<std::tuple<const Model::Attribute*, std::variant<EnumeratedChoice, BoundedChoice>>> candidates;

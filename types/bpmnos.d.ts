@@ -63,6 +63,12 @@ export interface Controller {
    */
   getPendingDecisions(): string;
   /**
+   * Return every sequential performer of the run as a JSON array string:
+   * [{"performer":{"processId":s,"instanceId":s,"nodeId":s?},"performing":{...}|null,"waiting":[{...}]}].
+   * A performer is reported while its token is busy, and waiting is in the order the tokens became ready.
+   */
+  getSequentialPerformers(): string;
+  /**
    * Return, per choice of the decision task at the given token, the candidate values as a JSON array
    * string: [{"attribute":s,"enumeration":[...]}] for a drop-down, or
    * [{"attribute":s,"lowerBound":n,"upperBound":n,"multipleOf":n?}] for a slider.

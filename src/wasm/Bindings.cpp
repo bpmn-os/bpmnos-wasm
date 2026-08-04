@@ -256,6 +256,52 @@ std::string controllerGetPendingDecisions(Controller& controller) {
 }
 
 /**
+ * @brief The identity of a token, as the keys its own record reports it under.
+ *
+ * @param token The token.
+ * @return {processId, instanceId, nodeId?}, the node absent for a token standing at a process.
+ */
+json tokenIdentity(const Execution::Token& token) {
+  auto record = token.jsonify();
+  json identity;
+  identity["processId"] = record.value("processId", json());
+  identity["instanceId"] = record.value("instanceId", json());
+  if (record.contains("nodeId")) {
+    identity["nodeId"] = record["nodeId"];
+  }
+  return identity;
+}
+
+/**
+ * @brief Binds Controller::getSequentialPerformers, reporting what each sequential performer conducts and
+ * what waits for it.
+ *
+ * @param controller The controller.
+ * @return A JSON array of {performer, performing, waiting} as a string.
+ */
+std::string controllerGetSequentialPerformers(Controller& controller) {
+  json out = json::array();
+  for (const auto& performer : controller.getSequentialPerformers()) {
+    auto token = performer.performer.lock();
+    if (!token) {
+      continue;
+    }
+    json entry;
+    entry["performer"] = tokenIdentity(*token);
+    auto performing = performer.performing.lock();
+    entry["performing"] = performing ? tokenIdentity(*performing) : json();
+    entry["waiting"] = json::array();
+    for (const auto& weak : performer.waiting) {
+      if (auto candidate = weak.lock()) {
+        entry["waiting"].push_back(tokenIdentity(*candidate));
+      }
+    }
+    out.push_back(std::move(entry));
+  }
+  return out.dump();
+}
+
+/**
  * @brief Renders a choice number as the JSON value of its attribute's type, so a string choice reads as
  * its label rather than a registry index.
  *
@@ -521,6 +567,7 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
   class_<Controller>("Controller")
     .smart_ptr_constructor("Controller", &createController)
     .function("getPendingDecisions", &controllerGetPendingDecisions)
+    .function("getSequentialPerformers", &controllerGetSequentialPerformers)
     .function("getChoiceCandidates", &controllerGetChoiceCandidates)
     .function("getMessageCandidates", &controllerGetMessageCandidates)
     .function("enqueueEntryDecision", &controllerEnqueueEntryDecision)
