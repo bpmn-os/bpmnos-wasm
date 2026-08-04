@@ -14,6 +14,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -21,6 +22,7 @@
 #include <emscripten/val.h>
 
 #include "Controller.h"
+#include "Structure.h"
 #include "Convert.h"
 #include "Engine.h"
 #include "EnqueuedEvents.h"
@@ -312,37 +314,6 @@ std::string controllerGetChoiceCandidates(
 }
 
 /**
- * @brief Binds Controller::getMessageCandidates, reporting the messages deliverable to a delivery request.
- *
- * @param controller The controller.
- * @param instanceId The token's instance identity.
- * @param nodeId The token's node identity.
- * @return A JSON array of {origin, sender, message} as a string.
- */
-std::string controllerGetMessageCandidates(
-  Controller& controller, const std::string& instanceId, const std::string& nodeId) {
-  json out = json::array();
-  auto request =
-    resolveRequest(controller, instanceId, nodeId, Execution::Observable::Type::MessageDeliveryRequest).lock();
-  if (!request) {
-    return out.dump();
-  }
-  for (const auto& weak : controller.getMessageCandidates(request.get())) {
-    auto message = weak.lock();
-    if (!message) {
-      continue;
-    }
-    auto content = message->jsonify();
-    json candidate;
-    candidate["origin"] = content.value("origin", json());
-    candidate["sender"] = content.contains("header") ? content["header"].value("sender", json()) : json();
-    candidate["message"] = std::move(content);
-    out.push_back(std::move(candidate));
-  }
-  return out.dump();
-}
-
-/**
  * @brief Binds Controller::enqueueEntryDecision, resolving the request and parsing the status.
  *
  * @param controller The controller.
@@ -496,6 +467,29 @@ void monitorAddObserver(Monitor& monitor, val observer) {
   });
 }
 
+/**
+ * @brief Binds describeModel, reporting what the model resolves.
+ *
+ * @param descriptionJson {"model": s, "lookupTables": {name: csv}?} as a string.
+ * @return {"sequentialPerformers": [{"performer": s, "activities": [s]}]} or {"error": message}, as a
+ *         string.
+ */
+std::string describeModelBinding(const std::string& descriptionJson) {
+  return guarded([&] {
+    json description = json::parse(descriptionJson);
+    if (!description.contains("model")) {
+      throw std::runtime_error("description requires a model");
+    }
+    std::unordered_map<std::string, std::string> lookupTables;
+    if (description.contains("lookupTables")) {
+      for (const auto& [name, csv] : description["lookupTables"].items()) {
+        lookupTables[name] = csv.get<std::string>();
+      }
+    }
+    return describeModel(description["model"].get<std::string>(), lookupTables);
+  }).dump();
+}
+
 } // namespace
 
 /**
@@ -512,6 +506,9 @@ int main() {
 }
 
 EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
+  // What the model resolves, which a caller needs whether or not it runs anything.
+  emscripten::function("describeModel", &describeModelBinding);
+
   // The monitor and the controller are shared with the engine they are handed to, and each is constructed
   // one way only: an instance held raw in one place and shared in another is how embind double frees.
   class_<Monitor>("Monitor")
@@ -522,7 +519,6 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .smart_ptr_constructor("Controller", &createController)
     .function("getPendingDecisions", &controllerGetPendingDecisions)
     .function("getChoiceCandidates", &controllerGetChoiceCandidates)
-    .function("getMessageCandidates", &controllerGetMessageCandidates)
     .function("enqueueEntryDecision", &controllerEnqueueEntryDecision)
     .function("enqueueExitDecision", &controllerEnqueueExitDecision)
     .function("enqueueChoiceDecision", &controllerEnqueueChoiceDecision)

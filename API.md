@@ -11,6 +11,23 @@ import createBPMNOS from './bpmnos.mjs';
 const module = await createBPMNOS();
 ```
 
+## Describing a model
+
+`describeModel(descriptionJson: string): string` reports what the engine resolves as it builds a model,
+which a caller needs whether or not it runs anything. The description is `{"model": s, "lookupTables":
+{name: csv}?}`; the lookup tables are required because a model cannot be built without the content of every
+table it references, and are read for nothing else. The answer is
+
+```
+{"sequentialPerformers": [{"performer": s, "activities": [s]}]}
+```
+
+or `{"error": message}` where the model could not be built. A sequential ad hoc subprocess performs its
+children one at a time, and the node that performs them is resolved by walking up from the subprocess to
+the first activity carrying a performer named "Sequential", never crossing another sequential ad hoc
+subprocess, then to the enclosing process, and failing both the subprocess performs for its own children.
+One node may perform for several subprocesses, and its activities are then all of theirs.
+
 ## Input
 
 Assembles a run's inputs. It is consumed when an Engine is built from it, so one Input builds one Engine.
@@ -45,8 +62,15 @@ Each entry is a single-keyed object naming the notification:
 
 ```
 {"token": …} | {"event": …} | {"message": …} |
-{"entryRequest"|"exitRequest"|"choiceRequest"|"messageDeliveryRequest": …deciding token…}
+{"entryRequest"|"exitRequest"|"choiceRequest": …deciding token…} |
+{"messageDeliveryRequest": {…deciding token…, "senders": [s], "recipientHeader": {key: value|null}}}
 ```
+
+A message delivery request carries what the waiting token accepts beside the token itself, because a
+caller replaying the entries cannot ask which messages it may receive: that answer changes whenever a
+message is created, and the request is not raised again. The criterion does not change while the token
+waits, so a caller matches a message against it as the engine does, the message's origin being among the
+senders, its header holding the same keys, and the values equal wherever both sides state one.
 
 ## Controller
 
@@ -91,8 +115,6 @@ greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` be
 - `getChoiceCandidates(instanceId: string, nodeId: string): string` — per choice of the decision task,
   `{"attribute": s, "enumeration": [v, …]}` or `{"attribute": s, "lowerBound": n, "upperBound": n,
   "multipleOf": n?}`, each value in the choice attribute's type.
-- `getMessageCandidates(instanceId: string, nodeId: string): string` — `[{"origin": s, "sender": s,
-  "message": {…}}]`.
 - `enqueueEntryDecision(json)` / `enqueueExitDecision(json)` — `{"instanceId": s, "nodeId": s, "status":
   [v, …]?}`.
 - `enqueueChoiceDecision(json)` — `{"instanceId": s, "nodeId": s, "choices": [v, …]}`, one value per

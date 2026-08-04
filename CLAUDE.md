@@ -32,11 +32,22 @@ not a mode: interactive is the exit, the entry, the direct message and the queue
 the competing candidates before the queue and a clock after it. The names the bindings build from are the
 engine's class names, `Metronome` optionally with its tick duration as `Metronome(500)`.
 
-The controller exposes `getPendingRequests`, `getChoiceCandidates` (the attribute and the raw numbers or the
-bounds), and `getMessageCandidates`, and takes a decision as the request weak pointer and its payload
+The controller exposes `getPendingRequests` and `getChoiceCandidates` (the attribute and the raw numbers or
+the bounds), resolves an enqueued delivery to a message through `getMessageCandidates`, and takes a decision
+as the request weak pointer and its payload
 through `enqueue*`, returning `std::expected`. An enqueued decision is built into an event at once and
 dispatched only while `Event::expired()` is false. It names no evaluator: whichever dispatcher evaluates
 keeps a share of the one the bindings built.
+
+What a caller cannot read from the entries it replays is what the model resolves, and `describeModel` in
+`src/Structure.cpp` answers it: the sequential performers and the activities each performs, built from the
+XML and the lookup tables the model references and nothing of a run. It is deliberately not part of `Input`,
+which assembles what a run is given rather than analysing it.
+
+A message delivery request carries, beside the deciding token, the senders that token accepts and the header
+it expects. A caller replaying the entries cannot ask which messages a token may receive, since that answer
+changes with every message created while the request stands and the request is not raised again; the
+criterion does not change, so the caller matches a message against it as the engine does.
 
 The WebAssembly build links into `dist/bpmnos.mjs` and `dist/bpmnos.wasm`. `API.md` documents the
 JavaScript API and `types/bpmnos.d.ts` declares it.

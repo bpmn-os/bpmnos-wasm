@@ -48,7 +48,9 @@ export interface Monitor {
    * begins misses the entries before it. The observer runs during the engine's blocking run, so a caller
    * that must not block the page runs the engine in a worker and forwards each entry from the observer.
    * Each entry is a single {"token"|"event"|"message"|"entryRequest"|"exitRequest"|"choiceRequest"|
-   * "messageDeliveryRequest": payload}; a decision request carries the deciding token.
+   * "messageDeliveryRequest": payload}; a decision request carries the deciding token, and a message
+   * delivery request carries with it the senders the token accepts and the header it expects, so that a
+   * caller replaying the entries matches a message against it rather than asking the engine.
    */
   addObserver(observer: (entryJson: string) => void): void;
   delete(): void;
@@ -58,8 +60,8 @@ export interface Controller {
   /**
    * Return the decisions left for the caller as a JSON array string, each carrying its kind and its
    * token's instance and node: [{"type":"entry|exit|choice|messageDelivery","instanceId":s,"nodeId":s}].
-   * For a choice or a message delivery, query the allowed decisions with getChoiceCandidates or
-   * getMessageCandidates.
+   * For a choice, query the allowed values with getChoiceCandidates; for a message delivery, match the
+   * messages seen against the criterion the request record carried.
    */
   getPendingDecisions(): string;
   /**
@@ -68,11 +70,6 @@ export interface Controller {
    * [{"attribute":s,"lowerBound":n,"upperBound":n,"multipleOf":n?}] for a slider.
    */
   getChoiceCandidates(instanceId: string, nodeId: string): string;
-  /**
-   * Return the messages that may be delivered to the given waiting token as a JSON array string:
-   * [{"origin":s,"sender":s,"message":{...}}], the origin and sender naming the message for enqueue.
-   */
-  getMessageCandidates(instanceId: string, nodeId: string): string;
   /**
    * Queue the entry of a waiting token, identified by its instance and node, for the next resume. The
    * decision is {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or
@@ -106,6 +103,13 @@ export interface Controller {
 }
 
 export interface BPMNOSModule {
+  /**
+   * Report what the engine resolves as it builds a model, for a caller that must know it without running:
+   * {"model":s,"lookupTables":{name:csv}?} in, {"sequentialPerformers":[{"performer":s,"activities":[s]}]}
+   * or {"error":message} out. The lookup tables are required because a model cannot be built without the
+   * content of every table it references, and are read for nothing else.
+   */
+  describeModel(descriptionJson: string): string;
   /** Parse a BPMN model XML into an input the engine is built from. */
   Input: { new (bpmnXml: string): Input };
   /**

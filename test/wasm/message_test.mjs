@@ -46,19 +46,64 @@ engine.run(0);
 let pending = JSON.parse(controller.getPendingDecisions());
 check(pending.length > 0, 'the engine stopped at the message delivery');
 
+// What a caller replaying the stream does: the messages it has seen created and not yet seen disposed of,
+// matched against the criterion the delivery request carried. The engine is not asked, and needs not be.
+function heldMessages() {
+  const held = new Map();
+
+  for (const entry of log) {
+    if (!entry.message) {
+      continue;
+    }
+    const key = `${entry.message.origin}|${entry.message.header.sender}`;
+
+    if (entry.message.state === 'CREATED') {
+      held.set(key, entry.message);
+    } else {
+      held.delete(key);
+    }
+  }
+
+  return [ ...held.values() ];
+}
+
+function matches(message, criterion) {
+  const expected = criterion.recipientHeader;
+
+  return criterion.senders.includes(message.origin)
+    && Object.keys(expected).length === Object.keys(message.header).length
+    && Object.entries(expected).every(([ key, value ]) =>
+      value === null || message.header[key] === null || message.header[key] === value);
+}
+
 let delivered = 0;
 let guard = 0;
 while (pending.length > 0 && guard++ < 50) {
   const request = pending[0];
   check(request.type === 'messageDelivery', 'the pending decision is a message delivery');
-  const candidates = JSON.parse(controller.getMessageCandidates(request.instanceId, request.nodeId));
-  check(candidates.length > 0, 'the delivery offers at least one candidate message');
+
+  const criterion = log
+    .filter((entry) => entry.messageDeliveryRequest
+      && entry.messageDeliveryRequest.instanceId === request.instanceId
+      && entry.messageDeliveryRequest.nodeId === request.nodeId)
+    .pop();
+
+  check(criterion !== undefined, 'the request was announced as a record');
+  check(Array.isArray(criterion.messageDeliveryRequest.senders),
+    'carrying the senders the token accepts');
+  check(typeof criterion.messageDeliveryRequest.recipientHeader === 'object',
+    'and the header it expects');
+
+  const candidates = heldMessages().filter((message) =>
+    matches(message, criterion.messageDeliveryRequest));
+
+  check(candidates.length > 0, 'a message held matches what the token waits for');
   const candidate = candidates[0];
   const decision = {
     instanceId: request.instanceId,
     nodeId: request.nodeId,
     origin: candidate.origin,
-    sender: candidate.sender,
+    sender: candidate.header.sender,
   };
   check(!('rejected' in JSON.parse(controller.enqueueMessageDeliveryDecision(JSON.stringify(decision)))),
     'enqueueMessageDeliveryDecision accepted');

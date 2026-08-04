@@ -27,6 +27,7 @@ set(XERCES_TAG   "v3.2.4" CACHE STRING "xerces-c tag")
 # engine is obtained differ between the native build and the WebAssembly build below.
 add_library(bpmnos_wasm STATIC
   src/Input.cpp
+  src/Structure.cpp
   src/Monitor.cpp
   src/EnqueuedEvents.cpp
   src/Controller.cpp
@@ -58,7 +59,7 @@ if(NOT EMSCRIPTEN)
   enable_testing()
   # Each native test drives a fixture through the bridge and takes the fixture directory as its
   # one argument, so a test does not depend on the working directory.
-  foreach(scenario IN ITEMS timer choice sequential_entry message greedy)
+  foreach(scenario IN ITEMS timer choice structure sequential_entry message greedy)
     add_executable(native_${scenario}_test test/native/${scenario}_test.cpp)
     target_link_libraries(native_${scenario}_test PRIVATE
       bpmnos_wasm bpmnos-execution bpmnos-model bpmn++ xerces-c pthread)
