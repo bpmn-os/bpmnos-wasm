@@ -111,9 +111,8 @@ Controller::getChoiceCandidates(
 
   auto [lower, upper] = choice->getBounds(status, data, globals);
 
-  // A bounded choice should state a discretizer and a model may nonetheless omit one. getEnumeration
-  // throws for a decimal in that case and silently assumes a step of one for an integer or a boolean, so
-  // it is not asked; the bounds are reported as they are and the caller is told there is no discretizer.
+  // A bounded choice need not state a discretizer, and getEnumeration is not asked for one, since it throws
+  // where the attribute is a decimal. What it would have used is reported instead.
   std::optional<BPMNOS::number> multipleOf;
   if (choice->multipleOf) {
     if (auto step = choice->multipleOf->execute(status, data, globals); step.has_value()) {
@@ -121,22 +120,35 @@ Controller::getChoiceCandidates(
     }
   }
 
+  // Where the model states none, the type may imply one. An integer and a boolean take whole values by
+  // construction, and getEnumeration steps them by one; only a decimal is left without a grid at all.
+  // Reporting the implied step matters as much as reporting a stated one, since a caller told of no step
+  // would offer values between the whole ones, which the choice does not admit.
+  if (!multipleOf.has_value()
+      && (choice->attribute->type == BPMNOS::INTEGER || choice->attribute->type == BPMNOS::BOOLEAN)) {
+    multipleOf = BPMNOS::number(1);
+  }
+
+  // What may be selected: the multiples of the discretizer within the bounds, which is the grid the engine
+  // admits, counted from zero and not from the lower bound. A caller's control counts its steps from the
+  // minimum it is given, so the two agree only once that minimum is itself a multiple. The bounds are
+  // reported unchanged beside them, since a caller cannot otherwise tell that a bound is unselectable.
+  BPMNOS::number lowest = lower;
+  BPMNOS::number highest = upper;
+
   if (multipleOf.has_value() && (double)multipleOf.value() != 0.0) {
-    // Moved to the grid the engine admits, which is the multiples of the discretizer counted from zero and
-    // not from the lower bound. A caller's control counts its steps from the minimum it is given, so the
-    // two agree only once that minimum is itself a multiple.
     double delta = std::abs((double)multipleOf.value());
     double first = delta * std::ceil((double)lower / delta);
     double last = delta * std::floor((double)upper / delta);
     if (first > last) {
       return std::make_tuple(choice->attribute, EnumeratedChoice{}); // the grid holds nothing between them
     }
-    lower = first;
-    upper = last;
+    lowest = first;
+    highest = last;
     multipleOf = delta;
   }
 
-  return std::make_tuple(choice->attribute, BoundedChoice{lower, upper, multipleOf});
+  return std::make_tuple(choice->attribute, BoundedChoice{lower, upper, lowest, highest, multipleOf});
 }
 
 std::vector<std::weak_ptr<const Execution::Message>> Controller::getMessageCandidates(

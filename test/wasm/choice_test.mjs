@@ -117,14 +117,16 @@ monitor.delete();
 
   const withBaseTwo = ask([ 2 ]);
   check(withBaseTwo.attribute === 'level', 'the second choice is of the level');
-  check(withBaseTwo.lowerBound === 2 && withBaseTwo.upperBound === 6 && withBaseTwo.multipleOf === 2,
+  check(withBaseTwo.lowest === 2 && withBaseTwo.highest === 6 && withBaseTwo.multipleOf === 2,
     'a base of two admits two to six by two');
 
   const withBaseFive = ask([ 5 ]);
-  check(withBaseFive.lowerBound === 6,
+  check(withBaseFive.lowest === 6,
     'a base of five admits from six, the first multiple of the discretizer at or above the bound');
-  check(withBaseFive.upperBound === 8,
+  check(withBaseFive.highest === 8,
     'a base of five admits up to eight, the last multiple at or below the bound');
+  check(withBaseFive.lowerBound === 5 && withBaseFive.upperBound === 9,
+    'and the bounds are reported beside them, neither of them selectable');
 
   check(ask([ 2, 4 ]).complete === true, 'nothing is offered once every choice has a value');
 
@@ -138,6 +140,45 @@ monitor.delete();
   dependentEngine.delete();
   dependentController.delete();
   dependentMonitor.delete();
+}
+
+// A bounded choice need not state a discretizer. An integer takes whole values by construction, so the type
+// implies a step of one and it is reported; a decimal has nothing implying one and is reported without.
+{
+  const implicitXml = readFileSync(
+    join(root, 'test', 'fixtures', 'DecisionTask_with_implicit_step.bpmn'), 'utf8');
+
+  const implicitInput = new module.Input(implicitXml);
+  implicitInput.setInstance('INSTANCE_ID; NODE_ID; INITIALIZATION\nInstance_1; Process_1;\n');
+  const implicitMonitor = new module.Monitor();
+  const implicitController = new module.Controller(interactive);
+  const implicitEngine = new module.Engine(
+    implicitInput, JSON.stringify({ provider: 'static' }), implicitController, implicitMonitor);
+  implicitInput.delete();
+
+  implicitEngine.run(0);
+
+  const [ request ] = JSON.parse(implicitController.getPendingDecisions())
+    .filter((decision) => decision.type === 'choice');
+  check(!!request, 'the engine stopped at the choice stating no discretizer');
+
+  const ask = (selectedValues) => JSON.parse(implicitController.getChoiceCandidates(
+    request.instanceId, request.nodeId, JSON.stringify(selectedValues)));
+
+  const whole = ask([]);
+  check(whole.attribute === 'level', 'the integer choice is offered');
+  check(whole.multipleOf === 1, 'an integer states the step its type implies, even where the model does not');
+  check(whole.lowest === 1 && whole.highest === 5, 'with the bounds unchanged');
+  check(whole.lowest === whole.lowerBound && whole.highest === whole.upperBound,
+    'so every bound is selectable and a reader is told of no imprecision');
+
+  const fraction = ask([ 3 ]);
+  check(fraction.attribute === 'share', 'the decimal choice is offered');
+  check(!('multipleOf' in fraction), 'a decimal states no step, nothing implying one');
+
+  implicitEngine.delete();
+  implicitController.delete();
+  implicitMonitor.delete();
 }
 
 console.error('ALL PASSED (WebAssembly choice)');

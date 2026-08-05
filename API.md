@@ -115,13 +115,18 @@ greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` be
 - `getChoiceCandidates(instanceId: string, nodeId: string, selectedValues: string): string` — the next
   choice the decision task waits for, given the values selected so far. `{}` where the request no longer
   stands, `{"complete": true}` where every choice has a value, and otherwise `{"attribute": s,
-  "enumeration": [v, …]}` or `{"attribute": s, "lowerBound": n, "upperBound": n, "multipleOf": n?}`, each
-  value in the choice attribute's type. A decision task states its choices in order and a later one may
-  depend on the earlier ones, so the candidates are asked for one choice at a time, each against the
-  values already selected. The bounds are the multiples of the discretizer within the condition's bounds,
-  so the first is not necessarily the bound the model states; strictness and the attribute's type have
-  already been resolved, and a bounded choice stating no discretizer is reported with its bounds unmoved
-  and no `multipleOf`.
+  "enumeration": [v, …]}` or `{"attribute": s, "lowerBound": n, "upperBound": n, "lowest": n, "highest":
+  n, "multipleOf": n?}`, each value in the choice attribute's type. A decision task states its choices in
+  order and a later one may depend on the earlier ones, so the candidates are asked for one choice at a
+  time, each against the values already selected. A bounded choice is reported twice over: `lowerBound`
+  and `upperBound` are the bounds as the condition states them, with strictness and the attribute's type
+  already resolved, while `lowest` and `highest` are the least and the greatest value that may be
+  selected, being the multiples of `multipleOf` within those bounds. The two pairs differ wherever the
+  grid falls beside a bound, whether because the bound is not a multiple or because the engine holds a
+  fractional step slightly beside the one written, and a caller that offers only the bounds would offer
+  values the engine does not admit. Where the model states no discretizer the step is the one the
+  attribute's type implies, one for an integer or a boolean and none for a decimal; where there is no
+  step, `lowest` and `highest` are the bounds and `multipleOf` is absent.
 - `enqueueEntryDecision(json)` / `enqueueExitDecision(json)` — `{"instanceId": s, "nodeId": s, "status":
   [v, …]?}`.
 - `enqueueChoiceDecision(json)` — `{"instanceId": s, "nodeId": s, "choices": [v, …]}`, one value per
@@ -160,7 +165,7 @@ while (pending.length) {
     const next = JSON.parse(
       controller.getChoiceCandidates(d.instanceId, d.nodeId, JSON.stringify(choices)));
     if (next.complete || !next.attribute) break;
-    choices.push(next.enumeration ? next.enumeration[0] : next.lowerBound);
+    choices.push(next.enumeration ? next.enumeration[0] : next.lowest);
   }
   controller.enqueueChoiceDecision(JSON.stringify({ instanceId: d.instanceId, nodeId: d.nodeId, choices }));
   engine.resume();

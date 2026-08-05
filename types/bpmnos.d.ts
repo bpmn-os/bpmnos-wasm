@@ -73,12 +73,17 @@ export interface Controller {
    * `{}` says the request no longer stands and the decision is to be dropped; `{"complete":true}` says
    * every choice has a value and the decision may be submitted; otherwise the answer is the next choice,
    * as {"attribute":s,"enumeration":[...]} for a drop-down or
-   * {"attribute":s,"lowerBound":n,"upperBound":n,"multipleOf":n?} for a number input.
+   * {"attribute":s,"lowerBound":n,"upperBound":n,"lowest":n,"highest":n,"multipleOf":n?} for a number
+   * input.
    *
-   * The bounds are the multiples of the discretizer within the condition's bounds, so the first is not
-   * necessarily the bound the model states and a control stepping from it lands on values the engine
-   * admits. Strictness and the attribute's type are already resolved. A bounded choice stating no
-   * discretizer, which a model should not do, is reported with its bounds unmoved and no multipleOf.
+   * A bounded choice is reported twice over. lowerBound and upperBound are the bounds as the condition
+   * states them, with strictness and the attribute's type already resolved; lowest and highest are the
+   * least and the greatest value that may be selected, being the multiples of multipleOf within those
+   * bounds. A control offers the second pair, so that stepping from its minimum lands on values the
+   * engine admits, and may tell its reader of the first where the two differ. Where the model states no
+   * discretizer the step is the one the attribute's type implies, one for an integer or a boolean and
+   * none for a decimal; where there is no step, lowest and highest are the bounds and multipleOf is
+   * absent.
    */
   getChoiceCandidates(instanceId: string, nodeId: string, selectedValues: string): string;
   /**

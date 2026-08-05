@@ -18,7 +18,23 @@
 namespace BPMNOS::WASM {
 
 using EnumeratedChoice = std::vector<BPMNOS::number>;
-using BoundedChoice = std::tuple<BPMNOS::number, BPMNOS::number, std::optional<BPMNOS::number>>; // LB,UP,multipleOf
+
+/**
+ * @brief A choice between bounds: what the condition states, and what may actually be selected.
+ *
+ * The two differ, and a caller needs both. The bounds are the condition's, with strictness resolved and the
+ * interval narrowed to the attribute's type. What may be selected are the multiples of the discretizer
+ * within them, and the least and the greatest of those need not be the bounds themselves: a step the engine
+ * cannot hold exactly puts its grid slightly beside the values the model states, so a bound may fall between
+ * two selectable values and not be one. A caller reporting that to a reader compares the two.
+ */
+struct BoundedChoice {
+  BPMNOS::number lowerBound;   ///< as the condition states it
+  BPMNOS::number upperBound;   ///< as the condition states it
+  BPMNOS::number lowest;       ///< least selectable value, on the discretizer's grid
+  BPMNOS::number highest;      ///< greatest selectable value, on the discretizer's grid
+  std::optional<BPMNOS::number> multipleOf; ///< the step, stated or implied by the type
+};
 
 /**
  * @brief The input side of the boundary: an interactive controller, in the engine's native vocabulary.

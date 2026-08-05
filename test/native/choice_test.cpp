@@ -162,19 +162,68 @@ int main(int argc, char** argv) {
     check(std::get<0>(first.value())->name == "base", "the first choice is of the base");
 
     auto withBaseTwo = boundsFor({ 2 });
-    check((double)std::get<0>(withBaseTwo) == 2.0, "a base of two admits from two");
-    check((double)std::get<1>(withBaseTwo) == 6.0, "a base of two admits up to six");
-    check(std::get<2>(withBaseTwo).has_value() && (double)*std::get<2>(withBaseTwo) == 2.0,
+    check((double)withBaseTwo.lowest == 2.0, "a base of two admits from two");
+    check((double)withBaseTwo.highest == 6.0, "a base of two admits up to six");
+    check(withBaseTwo.multipleOf.has_value() && (double)*withBaseTwo.multipleOf == 2.0,
       "the discretizer is two");
 
     auto withBaseFive = boundsFor({ 5 });
-    check((double)std::get<0>(withBaseFive) == 6.0,
+    check((double)withBaseFive.lowest == 6.0,
       "a base of five admits from six, the first multiple of the discretizer at or above the bound");
-    check((double)std::get<1>(withBaseFive) == 8.0,
+    check((double)withBaseFive.highest == 8.0,
       "a base of five admits up to eight, the last multiple at or below the bound");
+    check((double)withBaseFive.lowerBound == 5.0,
+      "and the bound itself is reported beside it, five being unselectable");
+    check((double)withBaseFive.upperBound == 9.0, "as is the upper bound, nine");
 
     check(!dependentController->getChoiceCandidates(dependent.get(), { 2, 4 }).has_value(),
       "nothing is offered once every choice has a value");
+  }
+
+  // A bounded choice need not state a discretizer. Where the attribute is an integer or a boolean the type
+  // implies one, since such a choice takes whole values and getEnumeration steps them by one; where it is a
+  // decimal nothing implies one, and the caller is told there is no step rather than a wrong one.
+  {
+    std::string implicitXml = readFile(fixtureDir + "/DecisionTask_with_implicit_step.bpmn");
+    std::string implicitCsv =
+      "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
+      "Instance_1; Process_1;\n";
+
+    Input implicitInput(implicitXml);
+    implicitInput.setInstance(implicitCsv);
+    auto implicitMonitor = std::make_shared<Monitor>();
+    auto implicitController = Test::interactiveController();
+    Engine implicitEngine(
+      std::make_unique<Model::StochasticDataProvider>(implicitInput.release(), 0),
+      implicitController, implicitMonitor);
+
+    implicitEngine.run();
+
+    std::shared_ptr<const Execution::DecisionRequest> implicit;
+    for (const auto& weak : implicitController->getPendingRequests()) {
+      auto candidate = weak.lock();
+      if (candidate && candidate->type == Execution::Observable::Type::ChoiceRequest) {
+        implicit = candidate;
+      }
+    }
+    check(implicit != nullptr, "the engine stopped at the choice stating no discretizer");
+
+    auto whole = implicitController->getChoiceCandidates(implicit.get(), {});
+    check(whole.has_value(), "the integer choice is offered");
+    const auto& wholeBounds = std::get<BoundedChoice>(std::get<1>(whole.value()));
+    check(wholeBounds.multipleOf.has_value(), "an integer states a step even where the model does not");
+    check((double)*wholeBounds.multipleOf == 1.0, "and the step the type implies is one");
+    check((double)wholeBounds.lowest == 1.0 && (double)wholeBounds.highest == 5.0,
+      "with the bounds unchanged, a step of one moving neither");
+    check((double)wholeBounds.lowest == (double)wholeBounds.lowerBound
+      && (double)wholeBounds.highest == (double)wholeBounds.upperBound,
+      "so every bound is selectable and a reader is told of no imprecision");
+
+    auto fraction = implicitController->getChoiceCandidates(implicit.get(), { 3 });
+    check(fraction.has_value(), "the decimal choice is offered");
+    const auto& fractionBounds = std::get<BoundedChoice>(std::get<1>(fraction.value()));
+    check(!fractionBounds.multipleOf.has_value(),
+      "a decimal states no step where the model states none, nothing implying one");
   }
 
   std::cerr << "ALL PASSED (choice)\n";

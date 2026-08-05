@@ -351,11 +351,17 @@ std::string controllerGetChoiceCandidates(
     out["enumeration"] = enumeration;
   }
   else {
+    // Both pairs are reported. The bounds are what the condition states; the least and the greatest are what
+    // may actually be selected, and they differ where a step the engine cannot hold exactly puts its grid
+    // beside the values the model states. A caller comparing them is what tells a reader that a bound is
+    // not among the values on offer.
     const auto& bounds = std::get<BoundedChoice>(values);
-    out["lowerBound"] = renderChoiceValue(std::get<0>(bounds), attribute->type);
-    out["upperBound"] = renderChoiceValue(std::get<1>(bounds), attribute->type);
-    if (std::get<2>(bounds)) {
-      out["multipleOf"] = renderChoiceValue(*std::get<2>(bounds), attribute->type);
+    out["lowerBound"] = renderChoiceValue(bounds.lowerBound, attribute->type);
+    out["upperBound"] = renderChoiceValue(bounds.upperBound, attribute->type);
+    out["lowest"] = renderChoiceValue(bounds.lowest, attribute->type);
+    out["highest"] = renderChoiceValue(bounds.highest, attribute->type);
+    if (bounds.multipleOf) {
+      out["multipleOf"] = renderChoiceValue(*bounds.multipleOf, attribute->type);
     }
   }
   return out.dump();
