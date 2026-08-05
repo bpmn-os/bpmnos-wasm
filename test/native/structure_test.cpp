@@ -63,11 +63,46 @@ int main(int argc, char** argv) {
       "performing the activities of the ad hoc subprocess it stands over");
   }
 
+  // the choices a decision task states, which the model settled when it built each of them
+  {
+    auto described = describeModel(readFile(fixtureDir + "/DecisionTask_with_dependent_choices.bpmn"), {});
+    check(!described.contains("error"), "the model with a decision task is described");
+
+    const auto& decisions = described["decisions"];
+    check(decisions.size() == 1, "one decision task is reported");
+    check(decisions[0]["node"] == "Activity_1", "named as the model names it");
+
+    const auto& choices = decisions[0]["choices"];
+    check(choices.size() == 2, "stating both of its choices, in the order it states them");
+    check(choices[0]["attribute"]["name"] == "base", "the first of the base");
+    check(choices[0]["attribute"]["type"] == "integer", "whose type is reported with it");
+    check(!choices[0]["attribute"]["id"].get<std::string>().empty(),
+      "as is the identifier it is resolved by");
+    check(choices[0]["kind"] == "enumeration", "and which is stated as an enumeration");
+    check(choices[0]["discretized"] == false, "an enumeration having no discretizer");
+    check(choices[1]["attribute"]["name"] == "level", "the second of the level");
+    check(choices[1]["kind"] == "bounds", "which is stated as a pair of bounds");
+    check(choices[1]["discretized"] == true, "and states a discretizer");
+  }
+
+  // a bounded choice stating no discretizer is a pair of bounds all the same
+  {
+    auto described = describeModel(readFile(fixtureDir + "/DecisionTask_with_implicit_step.bpmn"), {});
+    const auto& choices = described["decisions"][0]["choices"];
+    check(choices.size() == 2, "both choices are reported");
+    check(choices[0]["kind"] == "bounds" && choices[1]["kind"] == "bounds", "both stated as bounds");
+    check(choices[0]["discretized"] == false && choices[1]["discretized"] == false,
+      "neither stating a discretizer");
+    check(choices[0]["attribute"]["type"] == "integer" && choices[1]["attribute"]["type"] == "decimal",
+      "and their types are what the model declares");
+  }
+
   // a model with nothing sequential about it
   {
     auto described = describeModel(readFile(fixtureDir + "/Timer.bpmn"), {});
     check(!described.contains("error"), "a model without a sequential ad hoc subprocess is described");
     check(described["sequentialPerformers"].empty(), "and reports no performer");
+    check(described["decisions"].empty(), "and no decision task");
   }
 
   // a model that cannot be built says so rather than throwing

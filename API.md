@@ -19,7 +19,9 @@ which a caller needs whether or not it runs anything. The description is `{"mode
 table it references, and are read for nothing else. The answer is
 
 ```
-{"sequentialPerformers": [{"performer": s, "activities": [s]}]}
+{"sequentialPerformers": [{"performer": s, "activities": [s]}],
+ "decisions": [{"node": s,
+                "choices": [{"attribute": {"id": s, "name": s, "type": s}, "kind": s, "discretized": b}]}]}
 ```
 
 or `{"error": message}` where the model could not be built. A sequential ad hoc subprocess performs its
@@ -27,6 +29,15 @@ children one at a time, and the node that performs them is resolved by walking u
 the first activity carrying a performer named "Sequential", never crossing another sequential ad hoc
 subprocess, then to the enclosing process, and failing both the subprocess performs for its own children.
 One node may perform for several subprocesses, and its activities are then all of theirs.
+
+Each decision task is reported with the choices it states, in the order it states them and with the
+attribute each is of, named by the identifier it is resolved by as well as by its name and its type. A
+choice is stated either as an enumeration or as a pair of bounds, which `kind` names as `"enumeration"` or
+`"bounds"`, and `discretized` says whether a bounded one states a discretizer. Which of the two a choice is
+was settled when the model was built, so a caller drawing a control for a choice takes it from here rather
+than reading the condition again, which would restate the engine's grammar in another language. Nothing
+here is evaluated, and what a choice may take is asked of the controller instead, since it depends on the
+status, the data and the globals and only an engine standing at the token can answer it.
 
 ## Input
 

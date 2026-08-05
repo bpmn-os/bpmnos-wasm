@@ -29,8 +29,13 @@ using json = nlohmann::ordered_json;
  *
  * @param bpmnXml The BPMN model XML.
  * @param lookupTables The content of each lookup table the model references, keyed by its source name.
- * @return `{"sequentialPerformers": [{"performer": s, "activities": [s]}]}`, or `{"error": message}` where
- *         the model could not be built.
+ * @return `{"sequentialPerformers": [{"performer": s, "activities": [s]}], "decisions": [{"node": s,
+ *         "choices": [{"attribute": {"id": s, "name": s, "type": s}, "kind": s, "discretized": b}]}]}`, or
+ *         `{"error": message}` where the model could not be built. A choice is stated either as an
+ *         enumeration or as a pair of bounds, which `kind` names as `"enumeration"` or `"bounds"`, and
+ *         `discretized` says whether a bounded one states a discretizer. Nothing here is evaluated: what a
+ *         choice may take is a question for an engine standing at the token, and is asked of the
+ *         controller.
  */
 json describeModel(
   const std::string& bpmnXml,

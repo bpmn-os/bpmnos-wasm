@@ -121,9 +121,16 @@ export interface Controller {
 export interface BPMNOSModule {
   /**
    * Report what the engine resolves as it builds a model, for a caller that must know it without running:
-   * {"model":s,"lookupTables":{name:csv}?} in, {"sequentialPerformers":[{"performer":s,"activities":[s]}]}
+   * {"model":s,"lookupTables":{name:csv}?} in, {"sequentialPerformers":[{"performer":s,"activities":[s]}],
+   * "decisions":[{"node":s,"choices":[{"attribute":{"id":s,"name":s,"type":s},"kind":s,"discretized":b}]}]}
    * or {"error":message} out. The lookup tables are required because a model cannot be built without the
    * content of every table it references, and are read for nothing else.
+   *
+   * Each decision task is reported with the choices it states, in order, each of them either an
+   * enumeration or a pair of bounds, which kind names as "enumeration" or "bounds"; discretized says
+   * whether a bounded one states a discretizer. Which of the two a choice is was settled when the model
+   * was built, so a caller drawing a control takes it from here rather than reading the condition again.
+   * Nothing here is evaluated, and what a choice may take is asked of the controller.
    */
   describeModel(descriptionJson: string): string;
   /** Parse a BPMN model XML into an input the engine is built from. */

@@ -41,9 +41,18 @@ dispatched only while `Event::expired()` is false. It names no evaluator: whiche
 keeps a share of the one the bindings built.
 
 What a caller cannot read from the entries it replays is what the model resolves, and `describeModel` in
-`src/Structure.cpp` answers it: the sequential performers and the activities each performs, built from the
-XML and the lookup tables the model references and nothing of a run. It is deliberately not part of `Input`,
-which assembles what a run is given rather than analysing it.
+`src/Structure.cpp` answers it: the sequential performers and the activities each performs, and the decision
+tasks with the choices each states, built from the XML and the lookup tables the model references and
+nothing of a run. It is deliberately not part of `Input`, which assembles what a run is given rather than
+analysing it.
+
+The choices are reported here rather than left to the caller because `Choice::Choice` has already read the
+condition. Whether a choice is an enumeration or a pair of bounds, and which attribute it is of, are settled
+when the model is built, and a caller reading the condition a second time would restate the engine's grammar
+in another language and would be wrong wherever the two readings differed. Nothing about them is evaluated
+here: what a choice may take depends on the status, the data and the globals, and is asked of the controller
+through `getChoiceCandidates`. The two answers divide as the bridge divides everywhere, the description
+saying what the model states and the controller what a pending request may take.
 
 A message delivery request carries, beside the deciding token, the senders that token accepts and the header
 it expects. A caller replaying the entries cannot ask which messages a token may receive, since that answer
