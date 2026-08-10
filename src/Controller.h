@@ -33,7 +33,10 @@ struct BoundedChoice {
   BPMNOS::number upperBound;   ///< as the condition states it
   BPMNOS::number lowest;       ///< least selectable value, on the discretizer's grid
   BPMNOS::number highest;      ///< greatest selectable value, on the discretizer's grid
-  std::optional<BPMNOS::number> multipleOf; ///< the step, stated or implied by the type
+  /// The step, stated or implied by the type, at the precision it was evaluated at. A step is not a value
+  /// an attribute holds and is not rounded to one: the values it admits are the multiples of the step the
+  /// model states, each rounded as it is taken, so a caller given a rounded step computes a different grid.
+  std::optional<double> multipleOf;
 };
 
 /**

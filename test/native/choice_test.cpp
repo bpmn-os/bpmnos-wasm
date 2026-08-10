@@ -226,6 +226,55 @@ int main(int argc, char** argv) {
       "a decimal states no step where the model states none, nothing implying one");
   }
 
+  // A step no number can hold exactly. The grid is the multiples of the step the model states, each rounded
+  // only as it is taken, so a third of one is 0.333333 and four of them are 1.333333 rather than 1.333332.
+  // Reporting a rounded step instead would move the whole grid: its multiples fall a millionth below the
+  // thirds and further below with every multiple, so the first at or above one would be 1.333332 and the
+  // last at or below ten would be 9.99999, and neither bound would be selectable although both are.
+  {
+    std::string fractionalXml = readFile(fixtureDir + "/DecisionTask_with_fractional_step.bpmn");
+    std::string fractionalCsv =
+      "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
+      "Instance_1; Process_1;\n";
+
+    Input fractionalInput(fractionalXml);
+    fractionalInput.setInstance(fractionalCsv);
+    auto fractionalMonitor = std::make_shared<Monitor>();
+    auto fractionalController = Test::interactiveController();
+    Engine fractionalEngine(
+      std::make_unique<Model::StochasticDataProvider>(fractionalInput.release(), 0),
+      fractionalController, fractionalMonitor);
+
+    fractionalEngine.run();
+
+    std::shared_ptr<const Execution::DecisionRequest> fractional;
+    for (const auto& weak : fractionalController->getPendingRequests()) {
+      auto candidate = weak.lock();
+      if (candidate && candidate->type == Execution::Observable::Type::ChoiceRequest) {
+        fractional = candidate;
+      }
+    }
+    check(fractional != nullptr, "the engine stopped at the choice discretized by a third");
+
+    auto thirds = fractionalController->getChoiceCandidates(fractional.get(), {});
+    check(thirds.has_value(), "the choice is offered");
+    const auto& grid = std::get<BoundedChoice>(std::get<1>(thirds.value()));
+
+    check(grid.multipleOf.has_value(), "the step is reported");
+    check(*grid.multipleOf > 0.3333333 && *grid.multipleOf < 0.3333334,
+      "at the precision it was evaluated at, and not rounded to what a value may hold");
+
+    check((double)grid.lowest == 1.0, "one is three thirds, so the lower bound is itself selectable");
+    check((double)grid.highest == 10.0, "and ten is thirty thirds, so the upper bound is too");
+
+    // what the engine will actually accept, which is the set this answer has to describe
+    auto admitted = fractionalController->getChoices(fractional.get()).front()->getEnumeration(
+      BPMNOS::Values{}, BPMNOS::Values{}, BPMNOS::Values{});
+    check(!admitted.empty(), "the engine admits values");
+    check((double)admitted.front() == (double)grid.lowest, "the least reported is the least admitted");
+    check((double)admitted.back() == (double)grid.highest, "and the greatest reported the greatest admitted");
+  }
+
   std::cerr << "ALL PASSED (choice)\n";
   return 0;
 }

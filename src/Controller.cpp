@@ -117,41 +117,37 @@ Controller::getChoiceCandidates(
 
   auto [lower, upper] = choice->getBounds(status, data, globals);
 
-  // A bounded choice need not state a discretizer, and getEnumeration is not asked for one, since it throws
-  // where the attribute is a decimal. What it would have used is reported instead.
-  std::optional<BPMNOS::number> multipleOf;
-  if (choice->multipleOf) {
-    if (auto step = choice->multipleOf->execute(status, data, globals); step.has_value()) {
-      multipleOf = step.value();
-    }
-  }
-
-  // Where the model states none, the type may imply one. An integer and a boolean take whole values by
-  // construction, and getEnumeration steps them by one; only a decimal is left without a grid at all.
-  // Reporting the implied step matters as much as reporting a stated one, since a caller told of no step
-  // would offer values between the whole ones, which the choice does not admit.
-  if (!multipleOf.has_value()
-      && (choice->attribute->type == BPMNOS::INTEGER || choice->attribute->type == BPMNOS::BOOLEAN)) {
-    multipleOf = BPMNOS::number(1);
-  }
-
-  // What may be selected: the multiples of the discretizer within the bounds, which is the grid the engine
-  // admits, counted from zero and not from the lower bound. A caller's control counts its steps from the
-  // minimum it is given, so the two agree only once that minimum is itself a multiple. The bounds are
-  // reported unchanged beside them, since a caller cannot otherwise tell that a bound is unselectable.
+  // What a discretized choice may take is what the choice itself says it may take. The grid is therefore
+  // asked of it rather than computed here from the bounds and the discretizer: a grid computed twice is a
+  // grid that can differ, and a caller offered a value the engine does not admit is offered a value the
+  // engine will refuse. The bounds are reported unchanged beside the grid, since a caller cannot otherwise
+  // tell that a bound is not itself selectable.
+  std::optional<double> multipleOf;
   BPMNOS::number lowest = lower;
   BPMNOS::number highest = upper;
 
-  if (multipleOf.has_value() && (double)multipleOf.value() != 0.0) {
-    double delta = std::abs((double)multipleOf.value());
-    double first = delta * std::ceil((double)lower / delta);
-    double last = delta * std::floor((double)upper / delta);
-    if (first > last) {
-      return std::make_tuple(choice->attribute, EnumeratedChoice{}); // the grid holds nothing between them
+  if (choice->multipleOf) {
+    auto values = choice->getEnumeration(status, data, globals);
+    if (values.empty()) {
+      return std::make_tuple(choice->attribute, EnumeratedChoice{}); // the grid holds nothing within the bounds
     }
-    lowest = first;
-    highest = last;
-    multipleOf = delta;
+
+    lowest = values.front();
+    highest = values.back();
+
+    // The step is the discretizer the model states, reported at the precision it was evaluated at, since the
+    // grid is counted from zero in that step and not from the value reported as the least.
+    if (auto step = choice->multipleOf->execute(status, data, globals); step.has_value()) {
+      multipleOf = std::abs(step.value());
+    }
+  }
+
+  // Where the model states no discretizer, the type may still imply one. An integer and a boolean take whole
+  // values by construction; only a decimal is left without a grid at all. Reporting the implied step matters
+  // as much as reporting a stated one, since a caller told of no step would offer values between the whole
+  // ones, which the choice does not admit.
+  else if (choice->attribute->type == BPMNOS::INTEGER || choice->attribute->type == BPMNOS::BOOLEAN) {
+    multipleOf = 1.0;
   }
 
   return std::make_tuple(choice->attribute, BoundedChoice{lower, upper, lowest, highest, multipleOf});

@@ -181,4 +181,48 @@ monitor.delete();
   implicitMonitor.delete();
 }
 
+// A step no number can hold exactly. The step crosses at the precision it was evaluated at rather than as a
+// value, since the grid is the multiples of the step the model states, each rounded only as it is taken. A
+// caller given a rounded third would compute multiples falling a millionth below the thirds, and further
+// below with each one, and would offer values the engine does not admit while refusing the bounds it does.
+{
+  const fractionalXml = readFileSync(
+    join(root, 'test', 'fixtures', 'DecisionTask_with_fractional_step.bpmn'), 'utf8');
+
+  const fractionalInput = new module.Input(fractionalXml);
+  fractionalInput.setInstance('INSTANCE_ID; NODE_ID; INITIALIZATION\nInstance_1; Process_1;\n');
+  const fractionalMonitor = new module.Monitor();
+  const fractionalController = makeInteractive(new module.Controller(greedy));
+  const fractionalEngine = new module.Engine(
+    fractionalInput, JSON.stringify({ provider: 'static' }), fractionalController, fractionalMonitor);
+  fractionalInput.delete();
+
+  fractionalEngine.run(0);
+
+  const [ request ] = JSON.parse(fractionalController.getPendingDecisions())
+    .filter((decision) => decision.type === 'choice');
+  check(!!request, 'the engine stopped at the choice discretized by a third');
+
+  const thirds = JSON.parse(fractionalController.getChoiceCandidates(
+    request.instanceId, request.nodeId, JSON.stringify([])));
+
+  check(thirds.multipleOf > 0.3333333 && thirds.multipleOf < 0.3333334,
+    'the step crosses at the precision it was evaluated at, and not rounded to what a value may hold');
+  check(thirds.lowest === 1, 'one is three thirds, so the lower bound is itself selectable');
+  check(thirds.highest === 10, 'and ten is thirty thirds, so the upper bound is too');
+
+  // the grid a caller computes from what it is told, which is what the values have to be
+  const admits = (value) => {
+    const multiple = Math.round(value / thirds.multipleOf);
+    return Number((multiple * thirds.multipleOf).toFixed(6)) === value;
+  };
+  check(admits(1) && admits(10), 'both ends are multiples of the step as the caller computes them');
+  check(Number((4 * thirds.multipleOf).toFixed(6)) === 1.333333,
+    'and four thirds is 1.333333, which a rounded step would have made 1.333332');
+
+  fractionalEngine.delete();
+  fractionalController.delete();
+  fractionalMonitor.delete();
+}
+
 console.error('ALL PASSED (WebAssembly choice)');

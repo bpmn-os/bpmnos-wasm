@@ -139,12 +139,21 @@ greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` be
   time, each against the values already selected. A bounded choice is reported twice over: `lowerBound`
   and `upperBound` are the bounds as the condition states them, with strictness and the attribute's type
   already resolved, while `lowest` and `highest` are the least and the greatest value that may be
-  selected, being the multiples of `multipleOf` within those bounds. The two pairs differ wherever the
-  grid falls beside a bound, whether because the bound is not a multiple or because the engine holds a
-  fractional step slightly beside the one written, and a caller that offers only the bounds would offer
+  selected. They are the choice's own answer, the ends of the values it admits, and not a grid computed a
+  second time from the bounds and the step, so what a caller is offered and what the engine accepts are one
+  set. Those values are the multiples of `multipleOf` within the bounds, counted from zero. The two pairs
+  differ wherever a bound is not itself a multiple, and a caller that offers only the bounds would offer
   values the engine does not admit. Where the model states no discretizer the step is the one the
   attribute's type implies, one for an integer or a boolean and none for a decimal; where there is no
   step, `lowest` and `highest` are the bounds and `multipleOf` is absent.
+
+  Every value is reported in the choice attribute's type, and `multipleOf` is the exception: a step is not
+  a value an attribute holds, so it is reported at the precision it was evaluated at rather than rounded to
+  what a value may be. A caller computes the values the choice admits as the engine does, by rounding each
+  multiple of the step to the precision of a value: for `1 <= x <= 10, 1/3 | x` the step is a third, and
+  the values are `1`, `1.333333`, `1.666667` and so on up to `10`. A step rounded first would put every
+  multiple a little below the thirds, and further below with each one, so that neither bound was
+  selectable although both are.
 - `enqueueEntryDecision(json)` / `enqueueExitDecision(json)` — `{"instanceId": s, "nodeId": s, "status":
   [v, …]?}`.
 - `enqueueChoiceDecision(json)` — `{"instanceId": s, "nodeId": s, "choices": [v, …]}`, one value per

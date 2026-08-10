@@ -352,16 +352,19 @@ std::string controllerGetChoiceCandidates(
   }
   else {
     // Both pairs are reported. The bounds are what the condition states; the least and the greatest are what
-    // may actually be selected, and they differ where a step the engine cannot hold exactly puts its grid
-    // beside the values the model states. A caller comparing them is what tells a reader that a bound is
-    // not among the values on offer.
+    // may actually be selected, and they differ where the grid, counted from zero, falls beside a bound that
+    // is not itself a multiple. A caller comparing them is what tells a reader that a bound is not among the
+    // values on offer.
+    //
+    // The step is reported as it is, and not as a value of the attribute: it is not one, and rounding it to
+    // what an attribute can hold would give a caller a different grid from the one the engine admits.
     const auto& bounds = std::get<BoundedChoice>(values);
     out["lowerBound"] = renderChoiceValue(bounds.lowerBound, attribute->type);
     out["upperBound"] = renderChoiceValue(bounds.upperBound, attribute->type);
     out["lowest"] = renderChoiceValue(bounds.lowest, attribute->type);
     out["highest"] = renderChoiceValue(bounds.highest, attribute->type);
     if (bounds.multipleOf) {
-      out["multipleOf"] = renderChoiceValue(*bounds.multipleOf, attribute->type);
+      out["multipleOf"] = *bounds.multipleOf;
     }
   }
   return out.dump();

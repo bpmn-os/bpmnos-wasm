@@ -109,13 +109,28 @@ attribute's type (`ValueType`), so a string choice reads as its labels through t
 as indices.
 
 A bounded choice is answered as two pairs rather than one. The bounds the condition states are not in
-general values that may be selected, since the multiples of the discretizer fall where they fall, and a
-fractional step is held slightly beside the one written, so a tenth puts its grid a little off every round
-number. `BoundedChoice` therefore carries `lowerBound` and `upperBound`, which are the condition's own
-after strictness and the attribute's type have been resolved, beside `lowest` and `highest`, which are the
-first and the last multiple within them. A caller offers the second pair and may mention the first. Where
-the model states no discretizer the type is asked instead: an integer or a boolean takes whole values, so
-the step is one, and a decimal has nothing implying one and is answered without a step.
+general values that may be selected, the multiples of the discretizer being counted from zero rather than
+from the bound. `BoundedChoice` therefore carries `lowerBound` and `upperBound`, which are the condition's
+own after strictness and the attribute's type have been resolved, beside `lowest` and `highest`, which are
+the first and the last multiple within them. A caller offers the second pair and may mention the first.
+Where the model states no discretizer the type is asked instead: an integer or a boolean takes whole
+values, so the step is one, and a decimal has nothing implying one and is answered without a step.
+
+The step is the one thing crossing this boundary that is not rounded to what a value may hold. A value is a
+`BPMNOS::number`, a decimal fixed-point number with six places, and the grid the engine admits is the
+multiples of the step the model states with each multiple rounded as it is taken — `Choice::getEnumeration`
+computes it that way, from the double the expression was evaluated at. A step rounded first computes a
+different grid: a third becomes `0.333333`, whose multiples fall a millionth below the thirds and further
+below with every multiple, so a range of one to ten in thirds would begin at `1.333332` and end at
+`9.99999` and neither bound would be selectable although both are. `BoundedChoice::multipleOf` is therefore
+a `double` and the bindings report it as one.
+
+The ends are not computed here at all. `Choice::getEnumeration` is asked, and `lowest` and `highest` are the
+first and the last of the values it answers with, so what a caller is offered and what the engine accepts
+are one set by construction rather than by two pieces of arithmetic agreeing. Computing the grid a second
+time is what produced the range beginning at `1.333332`, and a grid computed twice is a grid that can differ
+whenever a rounding or a version does. The test over `DecisionTask_with_fractional_step.bpmn` compares the
+answer against `getEnumeration` for that reason.
 
 The choices of one decision task are not independent. `DecisionTask::determineAlternatives` writes each
 chosen value into the status through `AttributeRegistry::setValue` before it evaluates the condition of the
