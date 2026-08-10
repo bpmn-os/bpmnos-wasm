@@ -65,9 +65,32 @@ public:
   void run(unsigned int scenarioId = 0);
 
   /**
+   * @brief Draws the named scenario and prepares a new engine without advancing it, mirroring the
+   * execution engine's own initialize.
+   *
+   * The run begins at the scenario's earliest instantiation time, and the clock tick that opens it is the
+   * first record of the stream. Nothing further is processed, so a caller that drives the engine itself
+   * calls this once and then advance repeatedly; run is this followed by resume.
+   *
+   * @param scenarioId The scenario to draw from the data provider.
+   */
+  void initialize(unsigned int scenarioId = 0);
+
+  /**
    * @brief Continues a run, mirroring the execution engine's own resume.
    */
   void resume();
+
+  /**
+   * @brief Advances the run until the next event has to be fetched, mirroring the execution engine's own
+   * advance.
+   *
+   * One call fetches a single event and advances the system state as far as it can without fetching the
+   * next, so a caller is never more than one event ahead of what it does with the records produced.
+   *
+   * @return True if an event was processed and the run may continue, false once it cannot.
+   */
+  bool advance();
 
   /**
    * @brief Reports whether the system state is still alive, mirroring SystemState::isAlive. A run is done

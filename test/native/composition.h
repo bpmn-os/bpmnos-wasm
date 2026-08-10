@@ -22,31 +22,39 @@ namespace BPMNOS::WASM::Test {
  *
  * The first feasible exit, the first feasible non sequential entry and the directly addressed message
  * delivery are settled by their dispatchers. No dispatcher offers a choice, the entry of a child of a
- * sequential ad hoc subprocess, or an ambiguous message delivery, so those reach the queue, which is last
- * because nothing follows it. No clock is composed in, so time advances only by a tick the caller enqueues.
+ * sequential ad hoc subprocess, or an ambiguous message delivery, so those reach the queue. No clock is
+ * composed in, so time advances only by a tick the caller enqueues.
+ *
+ * The queue comes first. A position is a precedence, and the queue is what the caller says while everything
+ * behind it is what the run settles for itself, so an answer the caller gives is dispatched before anything
+ * automatic decides something else, and a termination stops the run when it is given rather than when the
+ * run happens to have nothing left to settle. It costs nothing at the fetches where it is empty.
  */
 inline std::shared_ptr<Controller> interactiveController() {
   auto evaluator = std::make_shared<Execution::GuidedEvaluator>();
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
+  dispatchers.push_back(std::make_unique<EnqueuedEvents>());
   dispatchers.push_back(
     std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator));
   dispatchers.push_back(
     std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator));
   dispatchers.push_back(std::make_unique<Execution::InstantDirectMessage>());
-  dispatchers.push_back(std::make_unique<EnqueuedEvents>());
   return std::make_shared<Controller>(std::move(dispatchers));
 }
 
 /**
  * @brief The greedy composition: every decision settles itself and the clock advances on its own.
  *
- * It is the engine's greedy application, dispatcher for dispatcher, with the queue before the clock.
- * TimeWarp answers every fetch, so anything behind it would never be reached; ahead of it, the queue is
- * what a caller ends such a run through.
+ * It is the engine's greedy application, dispatcher for dispatcher, with the queue first and the clock last.
+ * A position is a precedence: the queue is what the caller says, so ahead of the deciders a termination ends
+ * the run when it is given rather than at the first fetch where nothing else has anything to say, and it
+ * costs nothing at the fetches where it is empty. TimeWarp answers every fetch, so anything behind it would
+ * never be reached.
  */
 inline std::shared_ptr<Controller> greedyController() {
   auto evaluator = std::make_shared<Execution::GuidedEvaluator>();
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
+  dispatchers.push_back(std::make_unique<EnqueuedEvents>());
   dispatchers.push_back(
     std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator));
   dispatchers.push_back(
@@ -56,7 +64,6 @@ inline std::shared_ptr<Controller> greedyController() {
     std::make_unique<Execution::GreedyDispatcher<Execution::FirstEnumeratedChoice>>(evaluator));
   dispatchers.push_back(
     std::make_unique<Execution::GreedyDispatcher<Execution::CompetingCandidates>>(evaluator));
-  dispatchers.push_back(std::make_unique<EnqueuedEvents>());
   dispatchers.push_back(std::make_unique<Execution::TimeWarp>());
   return std::make_shared<Controller>(std::move(dispatchers));
 }

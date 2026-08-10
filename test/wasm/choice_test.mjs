@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
-import { interactive } from './composition.mjs';
+import { greedy, makeInteractive } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -30,7 +30,7 @@ const instanceCsv =
 const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
-const controller = new module.Controller(interactive);
+const controller = makeInteractive(new module.Controller(greedy));
 const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
 input.delete();
 
@@ -96,7 +96,7 @@ monitor.delete();
   const dependentInput = new module.Input(dependentXml);
   dependentInput.setInstance(dependentCsv);
   const dependentMonitor = new module.Monitor();
-  const dependentController = new module.Controller(interactive);
+  const dependentController = makeInteractive(new module.Controller(greedy));
   const dependentEngine = new module.Engine(
     dependentInput, JSON.stringify({ provider: 'static' }), dependentController, dependentMonitor);
   dependentInput.delete();
@@ -151,7 +151,7 @@ monitor.delete();
   const implicitInput = new module.Input(implicitXml);
   implicitInput.setInstance('INSTANCE_ID; NODE_ID; INITIALIZATION\nInstance_1; Process_1;\n');
   const implicitMonitor = new module.Monitor();
-  const implicitController = new module.Controller(interactive);
+  const implicitController = makeInteractive(new module.Controller(greedy));
   const implicitEngine = new module.Engine(
     implicitInput, JSON.stringify({ provider: 'static' }), implicitController, implicitMonitor);
   implicitInput.delete();

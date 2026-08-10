@@ -11,14 +11,20 @@ namespace BPMNOS::WASM {
 Controller::Controller(std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers)
   : dispatchers(std::move(dispatchers))
 {
+  // Every dispatcher speaks until it is silenced, so a composition that switches nothing runs as it always
+  // did.
+  active.assign(this->dispatchers.size(), true);
+
   // Find the one queue every enqueue writes into. The cast happens here and never again: the list owns the
-  // queue, and the raw pointer is how enqueue reaches it without searching.
-  for (const auto& dispatcher : this->dispatchers) {
-    if (auto* queue = dynamic_cast<EnqueuedEvents*>(dispatcher.get())) {
+  // queue, and the raw pointer is how enqueue reaches it without searching. Its position is kept with it,
+  // since it is the one dispatcher that may not be silenced.
+  for (std::size_t index = 0; index < this->dispatchers.size(); ++index) {
+    if (auto* queue = dynamic_cast<EnqueuedEvents*>(this->dispatchers[index].get())) {
       if (enqueued) {
         throw std::runtime_error("controller composed of several EnqueuedEvents");
       }
       enqueued = queue;
+      enqueuedIndex = index;
     }
   }
   if (!enqueued) {
@@ -239,12 +245,40 @@ std::expected<void, std::string> Controller::enqueueTerminationEvent() {
   return {};
 }
 
+void Controller::requireIndex(std::size_t index) const {
+  if (index >= dispatchers.size()) {
+    throw std::runtime_error("controller holds no dispatcher at position " + std::to_string(index));
+  }
+}
+
+void Controller::activate(std::size_t index) {
+  requireIndex(index);
+  active[index] = true;
+}
+
+void Controller::deactivate(std::size_t index) {
+  requireIndex(index);
+  if (index == enqueuedIndex) {
+    throw std::runtime_error("the queue cannot be silenced");
+  }
+  active[index] = false;
+}
+
+bool Controller::isActive(std::size_t index) const {
+  requireIndex(index);
+  return active[index];
+}
+
 std::shared_ptr<Execution::Event> Controller::dispatchEvent(const Execution::SystemState* systemState) {
   // Walk the composition in order, exactly as the greedy controller walks its own: a decision is dispatched
   // only while feasible, and any other event is forwarded immediately. The queue is one of the dispatchers
   // and needs no case of its own, an enqueued decision being an event rather than a Decision.
-  for (auto& dispatcher : dispatchers) {
-    if (auto event = dispatcher->dispatchEvent(systemState)) {
+  for (std::size_t index = 0; index < dispatchers.size(); ++index) {
+    if (!active[index]) {
+      // silenced: the walk carries past it, exactly as it carries past one that answers nothing
+      continue;
+    }
+    if (auto event = dispatchers[index]->dispatchEvent(systemState)) {
       if (auto decision = std::dynamic_pointer_cast<Execution::Decision>(event)) {
         if (decision->reward().has_value()) {
           return event;

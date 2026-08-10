@@ -26,8 +26,23 @@ export interface Engine {
    * different sample of the same model.
    */
   run(scenarioId: number): void;
+  /**
+   * Draw the named scenario and prepare a new engine without advancing it, mirroring the execution
+   * engine's initialize. The run begins at the scenario's earliest instantiation time, and the clock
+   * tick that opens it is the first record of the stream. Call this once and then advance repeatedly to
+   * drive the engine yourself; run is this followed by resume.
+   */
+  initialize(scenarioId: number): void;
   /** Continue a run, mirroring the execution engine's resume. */
   resume(): void;
+  /**
+   * Advance the run until the next event has to be fetched, mirroring the execution engine's advance.
+   * One call fetches a single event and advances the system state as far as it can without fetching the
+   * next, so a caller is never more than one event ahead of the records it has received.
+   *
+   * @returns True if an event was processed and the run may continue, false once it cannot.
+   */
+  advance(): boolean;
   /** Report whether the system state is still alive; a run is done once this is false. */
   isAlive(): boolean;
   /** Report the current simulated time. */
@@ -115,6 +130,21 @@ export interface Controller {
   enqueueClockTickEvent(): string;
   /** Queue a termination event that ends execution at the next resume. */
   enqueueTerminationEvent(): string;
+  /**
+   * Let the dispatcher at this position of the composition speak again. The position is the one it was
+   * given in, so the caller that composed the controller knows it.
+   */
+  activate(index: number): void;
+  /**
+   * Silence the dispatcher at this position, so that the walk carries past it and what it would have
+   * settled is left to whatever follows it, and to the caller where nothing does. One composition thereby
+   * serves several ways of running a model, turned over between fetches without rebuilding anything. Only
+   * dispatching is withheld: a silenced dispatcher goes on observing and is correct the moment it speaks
+   * again. The queue cannot be silenced.
+   */
+  deactivate(index: number): void;
+  /** Report whether the dispatcher at this position dispatches. */
+  isActive(index: number): boolean;
   delete(): void;
 }
 

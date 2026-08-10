@@ -14,9 +14,13 @@ and one autonomous run are covered by native and WebAssembly tests that pass wit
 `BPMNOS::Model::Input`, moved out when an `Engine` is built.
 
 `Engine` is given the parts a run is made of and assembles nothing: the data provider arrives built, the
-controller drives every run, and a monitor, if there is one, observes it. `run(scenarioId)` draws a scenario
-and runs a fresh engine, reusing the parse; `resume`, `isAlive`, and `getCurrentTime` follow the execution
-engine. A controller is required, a run without one fetching no event; a monitor is not, since an
+controller drives every run, and a monitor, if there is one, observes it. `initialize(scenarioId)` draws a
+scenario and prepares a fresh engine without carrying it forward, beginning at the scenario's earliest
+instantiation time, so the first record of the stream is the clock tick stating the instant the run begins
+at; `advance` carries it forward by a single fetched event and answers whether it may be asked again, which
+is how a caller drives a run without ever being further ahead than what it has drawn; `run(scenarioId)` is
+`initialize` followed by `resume`, reusing the parse. `resume`, `isAlive`, and `getCurrentTime` follow the
+execution engine. A controller is required, a run without one fetching no event; a monitor is not, since an
 unobserved run still reports through `isAlive`, `getCurrentTime`, and `getWeightedObjective`.
 
 `Monitor` forwards each token, event, message, and decision request to every observer registered with
@@ -26,11 +30,19 @@ observer only observes and is attached before the run.
 `Controller` is the dispatchers it is composed of, connected to it when it is constructed and walked in the
 order given on every fetch. What a dispatcher settles is settled without the caller; what none of them
 settles waits for what the caller enqueues, which `EnqueuedEvents` dispatches, so the position of that queue
-is the precedence of the caller's decisions. Exactly one is required, and the constructor refuses a
-composition with none or with several. How much of a run the caller drives is therefore a composition and
-not a mode: interactive is the exit, the entry, the direct message and the queue; greedy adds the choice and
-the competing candidates before the queue and a clock after it. The names the bindings build from are the
-engine's class names, `Metronome` optionally with its tick duration as `Metronome(500)`.
+is the precedence of the caller's decisions. It comes first, ahead of the deciders, so that a termination
+ends a run when it is given and an answer is dispatched before anything automatic settles something else.
+Exactly one is required, and the constructor refuses a composition with none or with several. The names the
+bindings build from are the engine's class names, `Metronome` optionally with its tick duration as
+`Metronome(500)`.
+
+How much of a run the caller drives is neither a mode of the engine nor a second composition: `activate`,
+`deactivate` and `isActive` take a dispatcher's position in the composition and say whether it speaks, so one
+composition serves both and a run survives the change. Greedy is every dispatcher speaking; interactive is
+that composition with the choice, the competing candidates and the clock silenced. Only dispatching is
+withheld — connecting and noticing are untouched — so a silenced dispatcher's candidates go on being built
+and invalidated and it answers from an up-to-date set the moment it speaks again. The queue cannot be
+silenced, for the reason a composition without one is refused.
 
 The controller exposes `getPendingRequests`, `getChoices` (the choices a decision task states, in order) and
 `getChoiceCandidates` (the attribute and the raw numbers or the bounds of the next choice, given the values
@@ -130,12 +142,12 @@ without timers. The pending decision lists prune expired entries only while trav
 self-validates through `Event::expired()`, so the bridge treats the weak pointer, not list membership, as
 liveness, and never holds a strong reference that would keep an engine object alive.
 
-Advancing simulated time is a matter of composition. A composition without a clock advances only by what the
-caller enqueues: a clock tick reaches the queue, is dispatched at the next fetch, and moves the current time
-by one, so a model with a timer reaches a terminal state once the caller has ticked past the trigger, which
-the native and WebAssembly timer tests exercise. A composition with `TimeWarp` or `Metronome` advances by
-itself, and either must stand behind the queue, because a clock answers every fetch and nothing behind it
-would ever be reached.
+Advancing simulated time is a matter of which dispatchers speak. With the clock silenced, or absent, time
+advances only by what the caller enqueues: a clock tick reaches the queue, is dispatched at the next fetch,
+and moves the current time by one, so a model with a timer reaches a terminal state once the caller has
+ticked past the trigger, which the native and WebAssembly timer tests exercise. With `TimeWarp` or
+`Metronome` speaking, time advances by itself, and either must stand last, because a clock answers every
+fetch and nothing behind it would ever be reached.
 
 ## Branching
 

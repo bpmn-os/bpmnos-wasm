@@ -26,7 +26,7 @@ Engine::Engine(std::unique_ptr<Model::DataProvider> dataProvider,
 
 Engine::~Engine() = default;
 
-void Engine::run(unsigned int scenarioId) {
+void Engine::initialize(unsigned int scenarioId) {
   // Tear down any previous run before building the next. No observer unsubscribes on destruction, so the
   // engine is replaced freely.
   engine.reset();
@@ -42,7 +42,14 @@ void Engine::run(unsigned int scenarioId) {
   // engine and nothing more. What a run settles by itself, and what it waits for, is the composition the
   // controller was built from.
   controller->connect(engine.get());
-  engine->run(scenario.get());
+  // A run beginning before its first instance only ticks through empty instants, so it begins where the
+  // scenario's data begins. The opening clock tick is the stream's first record and states that instant.
+  engine->initialize(scenario.get(), scenario->getEarliestInstantiationTime());
+}
+
+void Engine::run(unsigned int scenarioId) {
+  initialize(scenarioId);
+  engine->resume();
 }
 
 void Engine::resume() {
@@ -50,6 +57,13 @@ void Engine::resume() {
     throw std::runtime_error("engine has not been run");
   }
   engine->resume();
+}
+
+bool Engine::advance() {
+  if (!engine) {
+    throw std::runtime_error("engine has not been run");
+  }
+  return engine->advance();
 }
 
 bool Engine::isAlive() const {

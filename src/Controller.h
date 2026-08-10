@@ -202,9 +202,48 @@ public:
    */
   std::expected<void, std::string> enqueueTerminationEvent();
 
+  /**
+   * @brief Lets a dispatcher of the composition speak again.
+   *
+   * @param index Its position in the composition, as it was given.
+   * @throws std::runtime_error if the composition has no dispatcher at that position.
+   */
+  void activate(std::size_t index);
+
+  /**
+   * @brief Silences a dispatcher of the composition, so that the walk carries past it.
+   *
+   * What a silenced dispatcher would have settled is left to whatever follows it, and to the caller where
+   * nothing does, which is how one composition serves several ways of running a model: the run is driven by
+   * whichever of its dispatchers answer, and that is turned over between fetches without rebuilding
+   * anything. Only dispatching is withheld, so a silenced dispatcher goes on observing and is correct at the
+   * moment it speaks again.
+   *
+   * The queue cannot be silenced, for the reason a composition without one is refused: a run that dispatches
+   * nothing the caller enqueues ignores every decision, clock tick and termination it is given.
+   *
+   * @param index Its position in the composition, as it was given.
+   * @throws std::runtime_error if the composition has no dispatcher at that position, or if it is the queue.
+   */
+  void deactivate(std::size_t index);
+
+  /**
+   * @brief Reports whether a dispatcher of the composition speaks.
+   *
+   * @param index Its position in the composition, as it was given.
+   * @return True while it dispatches, false while it is silenced.
+   * @throws std::runtime_error if the composition has no dispatcher at that position.
+   */
+  bool isActive(std::size_t index) const;
+
 private:
+  /// Refuses a position the composition does not hold.
+  void requireIndex(std::size_t index) const;
+
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;     ///< walked in order on each fetch
+  std::vector<bool> active;                                                 ///< whether each of them dispatches
   EnqueuedEvents* enqueued = nullptr;                                       ///< the queue among them, owned by the list
+  std::size_t enqueuedIndex = 0;                                            ///< its position, which cannot be silenced
   const Execution::SystemState* systemState = nullptr;                      ///< cached from the latest notice
 };
 

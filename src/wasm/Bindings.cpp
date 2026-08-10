@@ -572,6 +572,9 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .function("enqueueExitDecision", &controllerEnqueueExitDecision)
     .function("enqueueChoiceDecision", &controllerEnqueueChoiceDecision)
     .function("enqueueMessageDeliveryDecision", &controllerEnqueueMessageDeliveryDecision)
+    .function("activate", &Controller::activate)
+    .function("deactivate", &Controller::deactivate)
+    .function("isActive", &Controller::isActive)
     .function("enqueueClockTickEvent", &controllerEnqueueClockTickEvent)
     .function("enqueueTerminationEvent", &controllerEnqueueTerminationEvent);
 
@@ -584,7 +587,9 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
   class_<Engine>("Engine")
     .constructor(&createEngine, allow_raw_pointers())
     .function("run", &Engine::run)
+    .function("initialize", &Engine::initialize)
     .function("resume", &Engine::resume)
+    .function("advance", &Engine::advance)
     .function("isAlive", &Engine::isAlive)
     .function("getCurrentTime", &Engine::getCurrentTime)
     .function("getWeightedObjective", &Engine::getWeightedObjective);

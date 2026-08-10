@@ -56,7 +56,14 @@ Assembles a run's inputs. It is consumed when an Engine is built from it, so one
   unobserved run still reporting through `isAlive`, `getCurrentTime`, and `getWeightedObjective`.
 - `run(scenarioId: number)` — draw the scenario and run from the start. Repeatable without reparsing;
   with the stochastic provider a different scenario id is a different sample.
+- `initialize(scenarioId: number)` — draw the scenario and prepare the engine without advancing it. The
+  run begins at the scenario's earliest instantiation time and the clock tick that opens it is the first
+  record of the stream. `run` is this followed by `resume`.
 - `resume()` — continue the run.
+- `advance(): boolean` — fetch a single event and advance the system state as far as it can without
+  fetching the next, returning whether the run may continue. A caller that drives the engine itself calls
+  `initialize` once and then `advance` until it answers false, and is never more than one event ahead of
+  the records it has received.
 - `isAlive(): boolean` — whether the system may still proceed; a run is done once it is false.
 - `getCurrentTime(): number` — the current simulated time.
 - `getWeightedObjective(): number` — the total weighted objective value accumulated so far; a live running value, valid at any pause, not only at termination.
@@ -148,6 +155,12 @@ greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` be
 - `enqueueMessageDeliveryDecision(json)` — `{"instanceId": s, "nodeId": s, "origin": s, "sender": s}`.
 - `enqueueClockTickEvent()` — advance the clock by one at the next resume.
 - `enqueueTerminationEvent()` — end the run at the next resume.
+- `activate(index)`, `deactivate(index)`, `isActive(index)` — whether the dispatcher at that position of the
+  composition speaks. A silenced one is carried past, so what it would have settled falls to whatever follows
+  it, and to the caller where nothing does; one composition thereby serves several ways of running a model,
+  turned over between fetches without rebuilding anything. Only dispatching is withheld, so a silenced
+  dispatcher goes on observing and is correct the moment it speaks again. The position is the one the
+  dispatcher was composed in, and the queue cannot be silenced.
 
 Each `enqueue…` returns `{"queued": true}` or `{"rejected": reason}`. A decision names its token by
 instance and node, and a message by its origin and sender; an enqueued decision whose token, request, or
