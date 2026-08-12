@@ -595,5 +595,5 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .function("advance", &Engine::advance)
     .function("isAlive", &Engine::isAlive)
     .function("getCurrentTime", &Engine::getCurrentTime)
-    .function("getWeightedObjective", &Engine::getWeightedObjective);
+    .function("getObjective", &Engine::getObjective);
 }

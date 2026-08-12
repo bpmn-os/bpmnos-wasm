@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
   json expected = log;
   bool expectedAlive = engine.isAlive();
   double expectedTime = engine.getCurrentTime();
-  double expectedObjective = engine.getWeightedObjective();
+  double expectedObjective = engine.getObjective();
   check(!expected.empty(), "the reference run produced records");
 
   log = json::array();
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
   check(log == expected, "advancing event by event produces the record stream that run produces");
   check(engine.isAlive() == expectedAlive, "it ends in the same liveness");
   check(engine.getCurrentTime() == expectedTime, "it ends at the same time");
-  check(engine.getWeightedObjective() == expectedObjective, "it ends with the same objective");
+  check(engine.getObjective() == expectedObjective, "it ends with the same objective");
 
   // Neither entry can be used before there is an engine to drive.
   bool refusedAdvance = false;

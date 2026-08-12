@@ -40,7 +40,7 @@ public:
    * which the caller releases them does not matter.
    *
    * A run without a controller would fetch no event, so one is required. A monitor is not: an unobserved
-   * run still reports through isAlive, getCurrentTime, and getWeightedObjective, and a caller that wants no
+   * run still reports through isAlive, getCurrentTime, and getObjective, and a caller that wants no
    * stream should not pay for one, the monitor serialising each notification before it looks for observers.
    *
    * @param dataProvider The data provider a scenario is drawn from, moved in.
@@ -109,13 +109,13 @@ public:
   double getCurrentTime() const;
 
   /**
-   * @brief Reports the total weighted objective value accumulated so far, mirroring the system state's
-   * getWeightedObjective, as a double for the JavaScript boundary. It is a live running value, valid at
+   * @brief Reports the objective value maintained by the run, mirroring the system state's
+   * getObjective, as a double for the JavaScript boundary. It is a live running value, valid at
    * any pause, not only at termination.
    *
    * @return The current objective value, or zero before the first run.
    */
-  double getWeightedObjective() const;
+  double getObjective() const;
 
 private:
   std::unique_ptr<Model::DataProvider> dataProvider;  ///< Owned outright; every run draws from it.
