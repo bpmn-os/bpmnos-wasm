@@ -1,14 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- A choice discretized by a step no number can hold exactly. A third is 0.333333 once it is a value, and
-     the multiples of that fall a millionth below the thirds and further below with every multiple, so a
-     grid derived from a rounded step neither begins at one nor ends at ten. The step is therefore kept at
-     the precision it was evaluated at, and each multiple is rounded only as it is taken. -->
 <bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:bpmnos="https://bpmnos.telematique.eu" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="sample-diagram" targetNamespace="http://bpmn.io/schema/bpmn" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL BPMN20.xsd">
   <bpmn2:process id="Process_1" isExecutable="true">
     <bpmn2:extensionElements>
       <bpmnos:status>
         <bpmnos:attributes>
-          <bpmnos:attribute id="Timestamp" name="timestamp" type="decimal" />
+          <bpmnos:attribute id="Timestamp" type="decimal" name="timestamp" />
         </bpmnos:attributes>
       </bpmnos:status>
     </bpmn2:extensionElements>
@@ -19,7 +15,7 @@
     <bpmn2:dataObject id="DataObject_1">
       <bpmn2:extensionElements>
         <bpmnos:attributes>
-          <bpmnos:attribute id="Instance" name="instance" type="string" />
+          <bpmnos:attribute id="Instance" type="string" name="instance" />
         </bpmnos:attributes>
       </bpmn2:extensionElements>
     </bpmn2:dataObject>
@@ -27,10 +23,10 @@
       <bpmn2:extensionElements>
         <bpmnos:status>
           <bpmnos:attributes>
-            <bpmnos:attribute id="Share" name="share" type="decimal" />
+            <bpmnos:attribute id="Share" type="decimal" name="share" />
           </bpmnos:attributes>
           <bpmnos:decisions>
-            <bpmnos:decision id="Decision_1" condition="1 &lt;= share &lt;= 10, 1/3 | share" />
+            <bpmnos:decision id="Decision_1" condition="1 &#60;= share &#60;= 10, 1/3 | share" />
           </bpmnos:decisions>
         </bpmnos:status>
       </bpmn2:extensionElements>
@@ -42,6 +38,13 @@
       <bpmn2:incoming>Flow_2</bpmn2:incoming>
     </bpmn2:endEvent>
   </bpmn2:process>
+  <bpmn2:dataStore id="DataStore_1">
+    <bpmn2:extensionElements>
+      <bpmnos:attributes>
+        <bpmnos:attribute id="Objective" type="decimal" name="objective := 0" />
+      </bpmnos:attributes>
+    </bpmn2:extensionElements>
+  </bpmn2:dataStore>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
       <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">

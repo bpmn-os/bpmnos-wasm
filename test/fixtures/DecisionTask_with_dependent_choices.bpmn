@@ -4,7 +4,7 @@
     <bpmn2:extensionElements>
       <bpmnos:status>
         <bpmnos:attributes>
-          <bpmnos:attribute id="Timestamp" name="timestamp" type="decimal" />
+          <bpmnos:attribute id="Timestamp" type="decimal" name="timestamp" />
         </bpmnos:attributes>
       </bpmnos:status>
     </bpmn2:extensionElements>
@@ -15,7 +15,7 @@
     <bpmn2:dataObject id="DataObject_1">
       <bpmn2:extensionElements>
         <bpmnos:attributes>
-          <bpmnos:attribute id="Instance" name="instance" type="string" />
+          <bpmnos:attribute id="Instance" type="string" name="instance" />
         </bpmnos:attributes>
       </bpmn2:extensionElements>
     </bpmn2:dataObject>
@@ -23,12 +23,12 @@
       <bpmn2:extensionElements>
         <bpmnos:status>
           <bpmnos:attributes>
-            <bpmnos:attribute id="Base" name="base" type="integer" />
-            <bpmnos:attribute id="Level" name="level" type="integer" />
+            <bpmnos:attribute id="Base" type="integer" name="base" />
+            <bpmnos:attribute id="Level" type="integer" name="level" />
           </bpmnos:attributes>
           <bpmnos:decisions>
             <bpmnos:decision id="Decision_1" condition="base ∈ [2, 5]" />
-            <bpmnos:decision id="Decision_2" condition="base &lt;= level &lt;= base + 4, 2 | level" />
+            <bpmnos:decision id="Decision_2" condition="base &#60;= level &#60;= base + 4, 2 | level" />
           </bpmnos:decisions>
         </bpmnos:status>
       </bpmn2:extensionElements>
@@ -40,6 +40,13 @@
       <bpmn2:incoming>Flow_2</bpmn2:incoming>
     </bpmn2:endEvent>
   </bpmn2:process>
+  <bpmn2:dataStore id="DataStore_1">
+    <bpmn2:extensionElements>
+      <bpmnos:attributes>
+        <bpmnos:attribute id="Objective" type="decimal" name="objective := 0" />
+      </bpmnos:attributes>
+    </bpmn2:extensionElements>
+  </bpmn2:dataStore>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
       <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
