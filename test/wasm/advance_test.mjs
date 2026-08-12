@@ -45,7 +45,7 @@ engine.run(0);
 const expected = log;
 const expectedAlive = engine.isAlive();
 const expectedTime = engine.getCurrentTime();
-const expectedObjective = engine.getWeightedObjective();
+const expectedObjective = engine.getObjective();
 check(expected.length > 0, 'the reference run produced records');
 
 log = [];
@@ -69,7 +69,7 @@ check(JSON.stringify(log) === JSON.stringify(expected),
   'advancing event by event produces the record stream that run produces');
 check(engine.isAlive() === expectedAlive, 'it ends in the same liveness');
 check(engine.getCurrentTime() === expectedTime, 'it ends at the same time');
-check(engine.getWeightedObjective() === expectedObjective, 'it ends with the same objective');
+check(engine.getObjective() === expectedObjective, 'it ends with the same objective');
 
 engine.delete();
 controller.delete();

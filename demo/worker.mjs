@@ -104,7 +104,7 @@ self.onmessage = async (event) => {
       self.postMessage({
         type: 'done',
         time: engine.getCurrentTime(),
-        objective: engine.getWeightedObjective(),
+        objective: engine.getObjective(),
         count: entryCount,
         scenarioId,
         engineMs,

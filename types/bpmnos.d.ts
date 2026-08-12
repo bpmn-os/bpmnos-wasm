@@ -48,10 +48,12 @@ export interface Engine {
   /** Report the current simulated time. */
   getCurrentTime(): number;
   /**
-   * Report the total weighted objective value accumulated so far, mirroring the engine's
-   * getWeightedObjective. It is a live running value, valid at any pause, not only at termination.
+   * Report the objective value the run maintains, mirroring the system state's getObjective. It is a
+   * live running value, valid at any pause, not only at termination, and zero before the first run.
+   * The engine keeps the objective as the first global attribute, so every token entry a monitor
+   * forwards carries the same value, written under the name that attribute is declared with.
    */
-  getWeightedObjective(): number;
+  getObjective(): number;
   delete(): void;
 }
 

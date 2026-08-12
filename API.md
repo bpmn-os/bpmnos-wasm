@@ -53,7 +53,7 @@ Assembles a run's inputs. It is consumed when an Engine is built from it, so one
 - `new Engine(input: Input, providerJson: string, controller: Controller, monitor: Monitor | null)` —
   `providerJson` is `{"provider": "static"|"expected"|"dynamic"|"stochastic", "seed": n}`, each field
   optional. A controller is required, a run without one fetching no event; a monitor is not, an
-  unobserved run still reporting through `isAlive`, `getCurrentTime`, and `getWeightedObjective`.
+  unobserved run still reporting through `isAlive`, `getCurrentTime`, and `getObjective`.
 - `run(scenarioId: number)` — draw the scenario and run from the start. Repeatable without reparsing;
   with the stochastic provider a different scenario id is a different sample.
 - `initialize(scenarioId: number)` — draw the scenario and prepare the engine without advancing it. The
@@ -66,7 +66,7 @@ Assembles a run's inputs. It is consumed when an Engine is built from it, so one
   the records it has received.
 - `isAlive(): boolean` — whether the system may still proceed; a run is done once it is false.
 - `getCurrentTime(): number` — the current simulated time.
-- `getWeightedObjective(): number` — the total weighted objective value accumulated so far; a live running value, valid at any pause, not only at termination.
+- `getObjective(): number` — the objective value the run maintains; a live running value, valid at any pause, not only at termination, and zero before the first run. The engine keeps the objective as the first global attribute, so every token entry carries the same value under the name that attribute is declared with, and a caller that reads the entries needs this call only where it observes nothing.
 
 ## Monitor
 

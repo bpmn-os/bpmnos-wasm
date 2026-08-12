@@ -19,9 +19,11 @@ scenario and prepares a fresh engine without carrying it forward, beginning at t
 instantiation time, so the first record of the stream is the clock tick stating the instant the run begins
 at; `advance` carries it forward by a single fetched event and answers whether it may be asked again, which
 is how a caller drives a run without ever being further ahead than what it has drawn; `run(scenarioId)` is
-`initialize` followed by `resume`, reusing the parse. `resume`, `isAlive`, and `getCurrentTime` follow the
-execution engine. A controller is required, a run without one fetching no event; a monitor is not, since an
-unobserved run still reports through `isAlive`, `getCurrentTime`, and `getWeightedObjective`.
+`initialize` followed by `resume`, reusing the parse. `resume`, `isAlive`, `getCurrentTime` and
+`getObjective` follow the execution engine, the last mirroring the system state's own and reporting the
+objective the engine maintains as the first global attribute. A controller is required, a run without one
+fetching no event; a monitor is not, since an unobserved run still reports through `isAlive`,
+`getCurrentTime`, and `getObjective`.
 
 `Monitor` forwards each token, event, message, and decision request to every observer registered with
 `addObserver`, serialised through `jsonify`, synchronously in the engine's order, keeping no log. An
