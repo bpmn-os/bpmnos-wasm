@@ -5,23 +5,23 @@ project(bpmnos_wasm CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Cache compilation across rebuilds when ccache is present; set before any fetch so it also
-# covers the fetched engine and its dependencies.
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-  set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+# ccache is chosen by whoever is building rather than imposed on a dependency, so it is set only when
+# bpmnos-wasm is the project being built.
+if(PROJECT_IS_TOP_LEVEL)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+  endif()
 endif()
 
-# Repositories the build fetches from. Everything is fetched into this project's build tree;
-# nothing outside the repository is referenced. The engine now cross compiles unchanged, so no
-# patch is applied to any fetched source.
+# The engine is the only dependency this project names. bpmn++ and Xerces-C++ are the engine's, declared by
+# it and fetched by it when a copy cannot be resolved, which holds for a cross compile as much as for a
+# native one; neither is staged here any more.
+set(BPMNOS_VERSION 0.1.0)
 set(BPMNOS_ENGINE_REPO "https://github.com/bpmn-os/bpmnos-engine.git" CACHE STRING "engine repository")
-set(BPMNOS_ENGINE_TAG  "main" CACHE STRING "engine tag")
-set(BPMNPP_REPO  "https://github.com/bpmn-os/bpmnpp.git" CACHE STRING "bpmn++ repository")
-set(BPMNPP_TAG   "main" CACHE STRING "bpmn++ tag")
-set(XERCES_REPO  "https://github.com/apache/xerces-c.git" CACHE STRING "xerces-c repository")
-set(XERCES_TAG   "v3.2.4" CACHE STRING "xerces-c tag")
+# Names the engine's branch while its change is unmerged. It becomes v${BPMNOS_VERSION} once tagged.
+set(BPMNOS_ENGINE_TAG  "dependency-management" CACHE STRING "engine tag")
 
 # The bridge library. Its sources are toolchain independent; the include paths and the way the
 # engine is obtained differ between the native build and the WebAssembly build below.
@@ -37,129 +37,74 @@ target_include_directories(bpmnos_wasm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT EMSCRIPTEN)
   # ------------------------------------------------------------------------------------------
-  # Native build. The engine is fetched and built as a subproject, exactly as the sibling
-  # bpmnos-rollout project does; xerces and bpmn++ are taken from the system. This build is for
-  # developing and testing the bridge; it produces no WebAssembly.
+  # Native build. The engine is resolved from a prefix when one satisfies the requirement and built as a
+  # subproject otherwise, exactly as the sibling bpmnos-rollout project does. This build is for developing
+  # and testing the bridge; it produces no WebAssembly.
   # ------------------------------------------------------------------------------------------
   include(FetchContent)
   set(FETCHCONTENT_QUIET FALSE)
-  set(BPMNOS_TESTS OFF CACHE BOOL "Disable bpmnos engine tests")
-  FetchContent_Declare(bpmnos GIT_REPOSITORY ${BPMNOS_ENGINE_REPO} GIT_TAG ${BPMNOS_ENGINE_TAG})
+  FetchContent_Declare(bpmnos
+    GIT_REPOSITORY ${BPMNOS_ENGINE_REPO}
+    GIT_TAG        ${BPMNOS_ENGINE_TAG}
+    FIND_PACKAGE_ARGS ${BPMNOS_VERSION}
+  )
   FetchContent_MakeAvailable(bpmnos)
 
-  target_include_directories(bpmnos_wasm SYSTEM PUBLIC
-    ${CMAKE_BINARY_DIR}/_deps/bpmnos-src/lib
-    ${CMAKE_BINARY_DIR}/_deps/cnl-src/include
-    ${CMAKE_BINARY_DIR}/_deps/json-src
-    ${CMAKE_BINARY_DIR}/_deps/strutil-src
-    ${CMAKE_BINARY_DIR}/_deps/limex-src
-  )
-  add_dependencies(bpmnos_wasm model_header execution_header)
+  # The engine's headers, those of the header-only libraries its amalgamated headers include, and bpmn++
+  # with Xerces all arrive as usage requirements of the exported targets.
+  target_link_libraries(bpmnos_wasm PUBLIC bpmnos::execution bpmnos::model)
 
   enable_testing()
   # Each native test drives a fixture through the bridge and takes the fixture directory as its
   # one argument, so a test does not depend on the working directory.
   foreach(scenario IN ITEMS timer choice structure sequential_entry message greedy advance optional)
     add_executable(native_${scenario}_test test/native/${scenario}_test.cpp)
-    target_link_libraries(native_${scenario}_test PRIVATE
-      bpmnos_wasm bpmnos-execution bpmnos-model bpmn++ xerces-c pthread)
+    target_link_libraries(native_${scenario}_test PRIVATE bpmnos_wasm pthread)
     add_test(NAME ${scenario} COMMAND native_${scenario}_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
   endforeach()
 
 else()
   # ------------------------------------------------------------------------------------------
-  # WebAssembly build. xerces, bpmn++, and the engine are each fetched from source and cross
-  # compiled here; nothing is patched, because the fixes that a cross compile once needed are now
-  # upstream in the engine. xerces and bpmn++ install into a staging prefix in the build tree so
-  # the engine finds them exactly as it finds installed libraries. Exceptions use the native
-  # WebAssembly form so a throw from the engine is caught at the boundary rather than trapping.
+  # WebAssembly build. The engine is fetched and cross compiled here, and it brings bpmn++, which brings
+  # Xerces-C++: none of the three is staged through ExternalProject any more, the engine and bpmn++ now
+  # declaring what they need and fetching it when it cannot be resolved. schematic++ is the exception that
+  # stays a host build, being a code generator that has to run during this configure rather than in a
+  # browser; the engine builds it in a sub-build of its own that inherits no toolchain file, so it is native
+  # without being asked. Exceptions use the native WebAssembly form so a throw from the engine is caught at
+  # the boundary rather than trapping.
   # ------------------------------------------------------------------------------------------
-  include(ExternalProject)
+  include(FetchContent)
+  set(FETCHCONTENT_QUIET FALSE)
 
-  set(STAGE ${CMAKE_BINARY_DIR}/stage)
-  set(ENGINE_SRC ${CMAKE_BINARY_DIR}/_deps/bpmnos-src)
-  set(EP_TOOLCHAIN -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
-  # The engine supports the clang compiler that Emscripten uses, so it compiles with its own
-  # warnings on. bpmn++ does not, so its compile mutes warnings.
-  set(WASM_ENGINE_FLAGS "-fwasm-exceptions")
-  set(WASM_DEP_FLAGS "-fwasm-exceptions -w")
+  # Applied to everything compiled here, the fetched dependencies included, so that the engine's archives
+  # and the bridge agree on how a throw crosses a function boundary.
+  add_compile_options(-fwasm-exceptions)
+  add_link_options(-fwasm-exceptions)
 
-  # xerces-c cross compiled and installed into the staging prefix.
-  ExternalProject_Add(ep_xerces
-    GIT_REPOSITORY ${XERCES_REPO} GIT_TAG ${XERCES_TAG}
-    UPDATE_DISCONNECTED TRUE
-    CMAKE_ARGS ${EP_TOOLCHAIN}
-      -DCMAKE_INSTALL_PREFIX=${STAGE}
-      -DCMAKE_BUILD_TYPE=Release
-      -DBUILD_SHARED_LIBS=OFF
-      -Dthreads=OFF
-      -Dtranscoder=iconv
-      -Dmessage-loader=inmemory
-    BUILD_BYPRODUCTS ${STAGE}/lib/libxerces-c.a
+  # Xerces-C++ is fetched by bpmn++ rather than staged here, but its build has to be told what a browser
+  # offers: no threads, no separate message catalogue, and the iconv transcoder that Emscripten provides.
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  set(threads OFF CACHE BOOL "" FORCE)
+  set(transcoder iconv CACHE STRING "" FORCE)
+  set(message-loader inmemory CACHE STRING "" FORCE)
+
+  # No FIND_PACKAGE_ARGS: a copy installed on this machine is a native one and could not be linked into a
+  # WebAssembly module, so the engine is always fetched and cross compiled here.
+  FetchContent_Declare(bpmnos
+    GIT_REPOSITORY ${BPMNOS_ENGINE_REPO}
+    GIT_TAG        ${BPMNOS_ENGINE_TAG}
   )
+  FetchContent_MakeAvailable(bpmnos)
 
-  # bpmn++ cross compiled against the staged xerces and installed into the staging prefix.
-  ExternalProject_Add(ep_bpmnpp
-    GIT_REPOSITORY ${BPMNPP_REPO} GIT_TAG ${BPMNPP_TAG}
-    UPDATE_DISCONNECTED TRUE
-    DEPENDS ep_xerces
-    CMAKE_ARGS ${EP_TOOLCHAIN}
-      -DCMAKE_INSTALL_PREFIX=${STAGE}
-      -DCMAKE_BUILD_TYPE=Release
-      -DCMAKE_FIND_ROOT_PATH=${STAGE}
-      -DDOCUMENTATION=OFF
-      -DBPMNPP_TESTS=OFF
-      -DXERCES_LIB=${STAGE}/lib/libxerces-c.a
-      "-DCMAKE_CXX_FLAGS=-isystem ${STAGE}/include ${WASM_DEP_FLAGS}"
-    BUILD_BYPRODUCTS ${STAGE}/lib/libbpmn++.a
-  )
+  target_link_libraries(bpmnos_wasm PUBLIC bpmnos::execution bpmnos::model)
 
-  # The engine, fetched into _deps and cross compiled unchanged. Only the two libraries are built.
-  ExternalProject_Add(ep_engine
-    GIT_REPOSITORY ${BPMNOS_ENGINE_REPO} GIT_TAG ${BPMNOS_ENGINE_TAG}
-    SOURCE_DIR ${ENGINE_SRC}
-    UPDATE_DISCONNECTED TRUE
-    DEPENDS ep_bpmnpp
-    CMAKE_ARGS ${EP_TOOLCHAIN}
-      -DNDEBUG=ON
-      -DBPMNOS_TESTS=OFF
-      -DDOCUMENTATION=OFF
-      -DCMAKE_FIND_ROOT_PATH=${STAGE}
-      -DXERCES_LIB=${STAGE}/lib/libxerces-c.a
-      -DBPMNPP_LIB=${STAGE}/lib/libbpmn++.a
-      "-DCMAKE_CXX_FLAGS=-isystem ${STAGE}/include ${WASM_ENGINE_FLAGS}"
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target model_header execution_header bpmnos-model bpmnos-execution
-    INSTALL_COMMAND ""
-    BUILD_BYPRODUCTS ${ENGINE_SRC}/lib/libbpmnos-model.a ${ENGINE_SRC}/lib/libbpmnos-execution.a
-  )
-  ExternalProject_Get_Property(ep_engine BINARY_DIR)
-
-  # The bridge compiles against the engine's single headers and the header-only dependencies.
-  target_compile_options(bpmnos_wasm PUBLIC -fwasm-exceptions)
-  target_include_directories(bpmnos_wasm SYSTEM PUBLIC
-    ${ENGINE_SRC}/lib
-    ${BINARY_DIR}/_deps/cnl-src/include
-    ${BINARY_DIR}/_deps/limex-src
-    ${BINARY_DIR}/_deps/json-src
-    ${STAGE}/include
-  )
-  add_dependencies(bpmnos_wasm ep_engine)
-
-  # The WebAssembly module: the embind entry linked against the bridge and the staged libraries.
+  # The WebAssembly module: the embind entry linked against the bridge, which carries the engine with it.
   add_executable(bpmnos_module src/wasm/Bindings.cpp)
-  add_dependencies(bpmnos_module ep_engine)
-  target_link_libraries(bpmnos_module PRIVATE
-    bpmnos_wasm
-    ${ENGINE_SRC}/lib/libbpmnos-execution.a
-    ${ENGINE_SRC}/lib/libbpmnos-model.a
-    ${STAGE}/lib/libbpmn++.a
-    ${STAGE}/lib/libxerces-c.a
-  )
+  target_link_libraries(bpmnos_module PRIVATE bpmnos_wasm)
   # Emit an ES module whose default export is the factory, so a bundler can import it and resolve
   # bpmnos.wasm through import.meta.url. The module is written into dist, which is what the package
   # ships, the demo copies, and the Node tests import.
   target_link_options(bpmnos_module PRIVATE
-    -fwasm-exceptions
     -lembind
     -sMODULARIZE=1
     -sEXPORT_ES6=1
