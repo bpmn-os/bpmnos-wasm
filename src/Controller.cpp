@@ -164,7 +164,7 @@ std::vector<std::weak_ptr<const Execution::Message>> Controller::getMessageCandi
   if (!extensionElements) {
     return candidates;
   }
-  const auto* messageDefinition = extensionElements->getMessageDefinition(token->status);
+  const auto* messageDefinition = extensionElements->getMessageDefinition();
   if (!messageDefinition) {
     return candidates;
   }

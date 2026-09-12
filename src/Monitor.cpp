@@ -27,7 +27,7 @@ json deliveryCriterion(const Execution::Token& token) {
   if (!extensionElements) {
     return criterion;
   }
-  const auto* messageDefinition = extensionElements->getMessageDefinition(token.status);
+  const auto* messageDefinition = extensionElements->getMessageDefinition();
   if (!messageDefinition) {
     return criterion;
   }
