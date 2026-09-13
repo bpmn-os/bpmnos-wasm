@@ -20,7 +20,7 @@ endif()
 # native one; neither is staged here any more.
 set(BPMNOS_VERSION 0.1.0)
 set(BPMNOS_ENGINE_REPO "https://github.com/bpmn-os/bpmnos-engine.git" CACHE STRING "engine repository")
-set(BPMNOS_ENGINE_TAG  "8eef8d3917055dd40bd01b737614a81f49ff34fc" CACHE STRING "engine revision")
+set(BPMNOS_ENGINE_TAG  "2abbaf3dd4880c090df67e81b1461809b77dd1de" CACHE STRING "engine revision")
 
 # The bridge library. Its sources are toolchain independent; the include paths and the way the
 # engine is obtained differ between the native build and the WebAssembly build below.

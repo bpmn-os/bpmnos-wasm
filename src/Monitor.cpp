@@ -68,6 +68,7 @@ void Monitor::subscribe(Execution::Engine* engine) {
     Type::Token,
     Type::Event,
     Type::Message,
+    Type::Signal,
     Type::EntryRequest,
     Type::ChoiceRequest,
     Type::ExitRequest,
@@ -91,6 +92,9 @@ void Monitor::notice(const Execution::Observable* observable) {
       break;
     case Type::Message:
       entry = json{ {"message", static_cast<const Execution::Message*>(observable)->jsonify()} };
+      break;
+    case Type::Signal:
+      entry = json{ {"signal", static_cast<const Execution::Signal*>(observable)->jsonify()} };
       break;
     case Type::EntryRequest:
       entry = json{ {"entryRequest", static_cast<const Execution::DecisionRequest*>(observable)->token->jsonify()} };

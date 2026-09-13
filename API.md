@@ -80,9 +80,14 @@ Each entry is a single-keyed object naming the notification:
 
 ```
 {"token": …} | {"event": …} | {"message": …} |
+{"signal": {"name": s, "content": {key: value}}} |
 {"entryRequest"|"exitRequest"|"choiceRequest": …deciding token…} |
 {"messageDeliveryRequest": {…deciding token…, "senders": [s], "recipientHeader": {key: value|null}}}
 ```
+
+A signal is reported once where it is broadcast, whether it was thrown within the model or raised from
+outside it, and whether or not anything receives it. It names no sender, a signal being broadcast without
+correlation, so a model that wants the thrower known declares it as part of the content.
 
 A message delivery request carries what the waiting token accepts beside the token itself, because a
 caller replaying the entries cannot ask which messages it may receive: that answer changes whenever a

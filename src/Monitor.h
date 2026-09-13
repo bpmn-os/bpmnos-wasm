@@ -23,10 +23,10 @@ using json = nlohmann::ordered_json;
  * from an observer. Several observers may be attached, so the modules of a web application each receive
  * every update independently.
  *
- * It forwards the token, event, and message notifications, and the four decision requests, so an observer
- * learns not only how execution proceeds but also when a decision falls to the caller. A decision request
- * carries the deciding token, tagged by the kind of request. Withdrawal of a token arrives as an ordinary
- * token record whose state is WITHDRAWN.
+ * It forwards the token, event, message, and signal notifications, and the four decision requests, so an
+ * observer learns not only how execution proceeds but also when a decision falls to the caller. A decision
+ * request carries the deciding token, tagged by the kind of request. Withdrawal of a token arrives as an
+ * ordinary token record whose state is WITHDRAWN.
  */
 class Monitor : public Execution::Observer {
 public:
@@ -34,8 +34,8 @@ public:
   ~Monitor() override;
 
   /**
-   * @brief Subscribes to the token, event, and message notifications and the four decision requests of
-   * the given engine.
+   * @brief Subscribes to the token, event, message, and signal notifications and the four decision
+   * requests of the given engine.
    *
    * @param engine The engine to observe.
    */
@@ -52,7 +52,7 @@ public:
   /**
    * @brief Serialises one notification and forwards it to every observer.
    *
-   * @param observable The observed token, event, message, or decision request.
+   * @param observable The observed token, event, message, signal, or decision request.
    */
   void notice(const Execution::Observable* observable) override;
 
