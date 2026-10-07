@@ -41,7 +41,8 @@ status, the data and the globals and only an engine standing at the token can an
 
 ## Input
 
-Assembles a run's inputs. It is consumed when an Engine is built from it, so one Input builds one Engine.
+Assembles a run's inputs. Its model is built when an Engine is built from it, so one Input builds one
+Engine.
 
 - `new Input(bpmnXml: string)` — parse the model.
 - `getLookupTableNames(): string` — a JSON array of the lookup table source names the model references.
@@ -51,20 +52,35 @@ Assembles a run's inputs. It is consumed when an Engine is built from it, so one
 ## Engine
 
 - `new Engine(input: Input, providerJson: string, controller: Controller, monitor: Monitor | null)` —
-  `providerJson` is `{"provider": "static"|"expected"|"dynamic"|"stochastic", "seed": n}`, each field
-  optional. A controller is required, a run without one fetching no event; a monitor is not, an
-  unobserved run still reporting through `isAlive`, `getCurrentTime`, and `getObjective`.
-- `run(scenarioId: number)` — draw the scenario and run from the start. Repeatable without reparsing;
-  with the stochastic provider a different scenario id is a different sample.
+  `providerJson` is `{"provider": "static"|"expected"|"dynamic"|"stochastic", "seed": n,
+  "clockTickDuration": n|"hold"}`, each field optional. `clockTickDuration` is the wall-clock time between
+  two clock ticks the data provider enqueues, in milliseconds, zero by default advancing time at once, or
+  `"hold"`, the data provider then never advancing time itself. A controller is required, a run without one
+  fetching no event; a monitor is not, an unobserved run still reporting through `isAlive`,
+  `getCurrentTime`, and `getObjective`.
+- `run(scenarioId: number): Promise<void>` — draw the scenario and run from the start until the run is
+  terminated. Repeatable without reparsing; with the stochastic provider a different scenario id is a
+  different sample.
 - `initialize(scenarioId: number)` — draw the scenario and prepare the engine without advancing it. The
   run begins at the scenario's earliest instantiation time and the clock tick that opens it is the first
   record of the stream. `run` is this followed by `resume`.
-- `resume()` — continue the run.
-- `advance(): boolean` — fetch a single event and advance the system state as far as it can without
-  fetching the next, returning whether the run may continue. A caller that drives the engine itself calls
+- `resume(): Promise<void>` — continue the run until it is terminated; a run ended by an enqueued termination
+  continues.
+- `advance(): Promise<boolean>` — perform a single round: fetch a single event and advance the system state
+  as far as it can without fetching the next, a round yielding no event waiting, and resolve to whether the
+  run may continue, which it may until it is terminated. A caller that drives the engine itself calls
   `initialize` once and then `advance` until it answers false, and is never more than one event ahead of
   the records it has received.
-- `isAlive(): boolean` — whether the system may still proceed; a run is done once it is false.
+- `advanceTime(milliseconds: number)` — let the engine advance time whenever it waits, by a clock tick at
+  once if the number is zero and otherwise once that wall-clock time has passed since the previous one.
+  Used with a data provider holding time, and switchable at any moment of a run.
+- `holdTime()` — stop the engine from advancing time, the state of a new engine.
+- `isAdvancingTime(): boolean` — whether the engine advances time.
+- `setPaused(paused: boolean)`, `isPaused(): boolean` — pause or continue a running run. A paused run
+  waits again and again without anything happening, time included, until it is continued, and is neither
+  terminated nor ended.
+- `isAlive(): boolean` — whether the run is alive, which it is from its beginning until it is terminated; a
+  run that waits is alive.
 - `getCurrentTime(): number` — the current simulated time.
 - `getObjective(): number` — the objective value the run maintains; a live running value, valid at any pause, not only at termination, and zero before the first run. The engine keeps the objective as the first global attribute, so every token entry carries the same value under the name that attribute is declared with, and a caller that reads the entries needs this call only where it observes nothing.
 
@@ -73,8 +89,7 @@ Assembles a run's inputs. It is consumed when an Engine is built from it, so one
 - `new Monitor()`.
 - `addObserver(observer: (entryJson: string) => void)` — the observer receives every notification, as
   JSON, in the engine's execution order, the moment it is recorded. The monitor keeps no history, so
-  attach observers before the run and observe only, never advancing the engine. `run` and `resume` block,
-  so a consumer that must not block the calling thread runs the engine off it and forwards each entry.
+  attach observers before the run and observe only, never advancing the engine.
 
 Each entry is a single-keyed object naming the notification:
 
@@ -118,20 +133,18 @@ that distinguishes it:
 | `MessageDeliveries` | the best feasible message delivery |
 | `CompetingCandidates` | the best of the two above, which have no precedence over each other |
 | `InstantDirectMessage` | a delivery whose sender addresses its recipient, or whose recipient names its sender |
-| `TimeWarp` | a clock tick advancing to the next scheduled moment |
-| `Metronome`, `Metronome(ms)` | a clock tick in step with real time, a tick lasting `ms` milliseconds |
 | `EnqueuedEvents` | what the caller enqueued and has not expired |
 
 The evaluator is `"GuidedEvaluator"` (the default) or `"LocalEvaluator"`, and every dispatcher that
 evaluates shares the one built here. Exactly one `EnqueuedEvents` is required: without it nothing could be
-enqueued, and with several the precedence would fall to whichever was found first. A clock answers every
-fetch, so `TimeWarp` and `Metronome` come last, behind the queue, or nothing behind them is ever reached.
+enqueued, and with several the precedence would fall to whichever was found first. No dispatcher advances
+time: the data provider does, or the engine when it is let advance time.
 
 The interactive composition is `["FirstFeasibleExit", "FirstFeasibleEntry", "InstantDirectMessage",
-"EnqueuedEvents"]`: the unambiguous decisions resolve themselves, the choice, the sequential ad hoc entry
-and the ambiguous message delivery fall to the caller, and time advances only by an enqueued tick. The
-greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` before the queue and
-`"TimeWarp"` after it, and then a run needs nothing from the caller at all.
+"EnqueuedEvents"]`: the unambiguous decisions resolve themselves, and the choice, the sequential ad hoc entry
+and the ambiguous message delivery fall to the caller; with a data provider holding time, time advances only
+by an enqueued tick. The greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` before
+the queue, and with the engine let advance time a run needs nothing from the caller at all.
 
 - `getPendingDecisions(): string` — `[{"type": "entry"|"exit"|"choice"|"messageDelivery", "instanceId":
   s, "nodeId": s}]`.
@@ -167,8 +180,8 @@ greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` be
   on the same attribute: a named object would merge them and lose a value, which a record being read can
   afford and a decision being made cannot.
 - `enqueueMessageDeliveryDecision(json)` — `{"instanceId": s, "nodeId": s, "origin": s, "sender": s}`.
-- `enqueueClockTickEvent()` — advance the clock by one at the next resume.
-- `enqueueTerminationEvent()` — end the run at the next resume.
+- `enqueueClockTickEvent()` — advance the clock by one in the next round.
+- `enqueueTerminationEvent()` — end the run in the next round.
 - `activate(index)`, `deactivate(index)`, `isActive(index)` — whether the dispatcher at that position of the
   composition speaks. A silenced one is carried past, so what it would have settled falls to whatever follows
   it, and to the caller where nothing does; one composition thereby serves several ways of running a model,
@@ -182,6 +195,13 @@ message has expired is silently dropped.
 
 ## Driving
 
+A run continues until it is terminated, and the caller acts while the engine waits, which is whenever a
+round yields no event. The run is then suspended, so that the caller's code runs: it reads the pending
+decisions, asks for the candidates of a choice and enqueues its answer, which the next round processes. This
+requires no thread of the caller's own, the module being built with JSPI, WebAssembly JavaScript Promise
+Integration, which the host must support, and works with any data
+provider.
+
 ```js
 const input = new module.Input(bpmnXml);
 for (const name of JSON.parse(input.getLookupTableNames())) input.addLookupTable(name, lookup[name]);
@@ -192,11 +212,16 @@ monitor.addObserver(entryJson => log(JSON.parse(entryJson)));
 const controller = new module.Controller(JSON.stringify({
   dispatchers: [ 'FirstFeasibleExit', 'FirstFeasibleEntry', 'InstantDirectMessage', 'EnqueuedEvents' ]
 }));
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
+const engine = new module.Engine(
+  input, JSON.stringify({ provider: 'static', clockTickDuration: 'hold' }), controller, monitor);
 
-engine.run(0);
-let pending = JSON.parse(controller.getPendingDecisions());
-while (pending.length) {
+// the run is not awaited here; it ends once nothing is left
+const running = engine.run(0);
+for (;;) {
+  await new Promise(resolve => setTimeout(resolve, 10));
+  const pending = JSON.parse(controller.getPendingDecisions());
+  if (!engine.isAlive()) break;
+  if (!pending.length) continue;
   const d = pending[0];
   const choices = [];
   for (;;) {
@@ -206,11 +231,10 @@ while (pending.length) {
     choices.push(next.enumeration ? next.enumeration[0] : next.lowest);
   }
   controller.enqueueChoiceDecision(JSON.stringify({ instanceId: d.instanceId, nodeId: d.nodeId, choices }));
-  engine.resume();
-  pending = JSON.parse(controller.getPendingDecisions());
 }
+await running;
 ```
 
-Composed greedily, `run` proceeds to completion without any of this. `enqueueClockTickEvent` and
-`enqueueTerminationEvent` advance or end a run when no decision is pending, which is how a composition
-without a clock is carried forward.
+Composed greedily and with the engine let advance time, `await engine.run(0)` proceeds to completion without
+any of this. With time held, `enqueueClockTickEvent` advances it by one, and `enqueueTerminationEvent` ends a
+run, which `resume` continues.

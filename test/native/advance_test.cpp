@@ -10,6 +10,7 @@
 // The timer fixture is used because it cannot finish without a clock, so the comparison covers a run whose
 // events include clock ticks rather than only token movement.
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -57,7 +58,9 @@ int main(int argc, char** argv) {
   input.setInstance(instanceCsv);
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::greedyController();
-  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
+  Engine engine(Test::dataProvider(input), controller, monitor);
+  // the data provider holds time, so the greedy run lets the engine advance it whenever it waits
+  engine.advanceTime(std::chrono::milliseconds::zero());
 
   json log = json::array();
   monitor->addObserver([&](const json& entry) { log.push_back(entry); });
@@ -100,8 +103,8 @@ int main(int argc, char** argv) {
   // Neither entry can be used before there is an engine to drive.
   bool refusedAdvance = false;
   try {
-    Engine unstarted(std::make_unique<Model::StochasticDataProvider>(Input(modelXml).release(), 0),
-                     Test::greedyController(), nullptr);
+    Input unstartedInput(modelXml);
+    Engine unstarted(Test::dataProvider(unstartedInput), Test::greedyController(), nullptr);
     unstarted.advance();
   }
   catch (const std::exception&) {

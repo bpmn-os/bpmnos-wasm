@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
-import { greedy } from './composition.mjs';
+import { greedy, held } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -34,7 +34,9 @@ const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller(greedy);
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
+const engine = new module.Engine(input, held, controller, monitor);
+// the data provider holds time, so the greedy run lets the engine advance it whenever it waits
+engine.advanceTime(0);
 input.delete();
 
 // Two observers, each collecting the stream independently, in the order it arrives.
@@ -43,7 +45,7 @@ const second = [];
 monitor.addObserver((entryJson) => first.push(entryJson));
 monitor.addObserver((entryJson) => second.push(entryJson));
 
-engine.run(0);
+await engine.run(0);
 
 check(first.length > 0, `the first observer received entries (${first.length})`);
 check(first.length === second.length, 'both observers received the same number of entries');
@@ -66,7 +68,7 @@ check(parsed.some((entry) => Object.keys(entry)[0].endsWith('Request')),
 const late = [];
 monitor.addObserver((entryJson) => late.push(entryJson));
 check(late.length === 0, 'an observer attached after the run received nothing from it');
-engine.run(1);
+await engine.run(1);
 check(late.length > 0, 'the late observer receives the next run');
 
 monitor.delete();

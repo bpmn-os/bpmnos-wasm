@@ -8,7 +8,7 @@
 
 namespace BPMNOS::WASM {
 
-Engine::Engine(std::unique_ptr<Model::DataProvider> dataProvider,
+Engine::Engine(std::shared_ptr<Execution::DataProvider> dataProvider,
                std::shared_ptr<Controller> controller,
                std::shared_ptr<Monitor> monitor)
   : dataProvider(std::move(dataProvider))
@@ -30,11 +30,28 @@ void Engine::initialize(unsigned int scenarioId) {
   // Tear down any previous run before building the next. No observer unsubscribes on destruction, so the
   // engine is replaced freely.
   engine.reset();
-  scenario.reset();
+  terminated = false;
 
-  // Draw the named scenario; with a stochastic provider a different scenario id is a different sample.
-  scenario = dataProvider->createScenario(scenarioId);
-  engine = std::make_unique<Execution::Engine>();
+  // Draw the named scenario; with a stochastic provider a different scenario id is a different sample. A run
+  // beginning before its first instance only ticks through empty instants, so it begins where the scenario's
+  // data begins, which the data provider states before the engine takes the scenario over.
+  auto scenario = dataProvider->createScenario(scenarioId);
+  auto startTime = dataProvider->getEarliestInstantiationTime(*scenario);
+  engine = std::make_unique<Execution::Engine>(dataProvider->getModel());
+  // While the engine waits the caller acts, and while the run is paused the engine waits again and again.
+  // Unless the run is paused, the bridge advances time if the caller has let it, the next round processing
+  // the clock tick it enqueues.
+  engine->wait = [this, sleep = engine->wait]() {
+    do {
+      if (!paused && clockTickDuration
+          && std::chrono::steady_clock::now() - previousClockTick >= *clockTickDuration) {
+        previousClockTick = std::chrono::steady_clock::now();
+        controller->enqueueClockTickEvent();
+        return;
+      }
+      (wait ? wait : sleep)();
+    } while (paused);
+  };
   if (monitor) {
     monitor->subscribe(engine.get());
   }
@@ -42,36 +59,64 @@ void Engine::initialize(unsigned int scenarioId) {
   // engine and nothing more. What a run settles by itself, and what it waits for, is the composition the
   // controller was built from.
   controller->connect(engine.get());
-  // A run beginning before its first instance only ticks through empty instants, so it begins where the
-  // scenario's data begins. The opening clock tick is the stream's first record and states that instant.
-  engine->initialize(scenario.get(), scenario->getEarliestInstantiationTime());
+  // The engine takes ownership of the scenario. The opening clock tick is the stream's first record and states
+  // the instant the run begins at.
+  engine->initialize(std::move(scenario), startTime);
+}
+
+void Engine::setWait(std::function<void()> wait) {
+  this->wait = std::move(wait);
+}
+
+void Engine::setPaused(bool paused) {
+  this->paused = paused;
+}
+
+bool Engine::isPaused() const {
+  return paused;
+}
+
+void Engine::advanceTime(std::chrono::milliseconds clockTickDuration) {
+  this->clockTickDuration = clockTickDuration;
+}
+
+void Engine::holdTime() {
+  clockTickDuration.reset();
+}
+
+bool Engine::isAdvancingTime() const {
+  return clockTickDuration.has_value();
 }
 
 void Engine::run(unsigned int scenarioId) {
   initialize(scenarioId);
   engine->resume();
+  terminated = true;
 }
 
 void Engine::resume() {
   if (!engine) {
     throw std::runtime_error("engine has not been run");
   }
+  // a run ended by a termination the caller enqueued continues, being alive again until it is terminated
+  terminated = false;
   engine->resume();
+  terminated = true;
 }
 
 bool Engine::advance() {
   if (!engine) {
     throw std::runtime_error("engine has not been run");
   }
-  return engine->advance();
+  bool continuing = engine->advance();
+  if (!continuing) {
+    terminated = true;
+  }
+  return continuing;
 }
 
 bool Engine::isAlive() const {
-  if (!engine) {
-    return false;
-  }
-  const auto* systemState = engine->getSystemState();
-  return systemState && systemState->isAlive();
+  return engine && !terminated;
 }
 
 double Engine::getCurrentTime() const {

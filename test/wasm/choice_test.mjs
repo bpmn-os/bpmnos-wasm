@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
-import { greedy, makeInteractive } from './composition.mjs';
+import { greedy, makeInteractive, held, Driver } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -31,13 +31,14 @@ const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = makeInteractive(new module.Controller(greedy));
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
+const engine = new module.Engine(input, held, controller, monitor);
+const driver = new Driver(engine, monitor);
 input.delete();
 
 const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
-engine.run(0);
+await driver.run(0);
 let pending = JSON.parse(controller.getPendingDecisions());
 check(pending.length > 0, 'the engine stopped at the choice');
 
@@ -70,7 +71,7 @@ while (pending.length > 0 && guard++ < 50) {
   };
   check(!('rejected' in JSON.parse(controller.enqueueChoiceDecision(JSON.stringify(decision)))),
     'enqueueChoiceDecision accepted');
-  engine.resume();
+  await driver.proceed();
   pending = JSON.parse(controller.getPendingDecisions());
 }
 
@@ -98,10 +99,11 @@ monitor.delete();
   const dependentMonitor = new module.Monitor();
   const dependentController = makeInteractive(new module.Controller(greedy));
   const dependentEngine = new module.Engine(
-    dependentInput, JSON.stringify({ provider: 'static' }), dependentController, dependentMonitor);
+    dependentInput, held, dependentController, dependentMonitor);
+  const dependentDriver = new Driver(dependentEngine, dependentMonitor);
   dependentInput.delete();
 
-  dependentEngine.run(0);
+  await dependentDriver.run(0);
 
   const [ request ] = JSON.parse(dependentController.getPendingDecisions())
     .filter((decision) => decision.type === 'choice');
@@ -133,7 +135,7 @@ monitor.delete();
   check(!('rejected' in JSON.parse(dependentController.enqueueChoiceDecision(JSON.stringify({
     instanceId: request.instanceId, nodeId: request.nodeId, choices: [ 5, 8 ]
   })))), 'a dependent choice is accepted');
-  dependentEngine.resume();
+  await dependentDriver.proceed();
   check(JSON.parse(dependentController.getPendingDecisions()).length === 0,
     'no decision is pending after the dependent choice');
 
@@ -153,10 +155,11 @@ monitor.delete();
   const implicitMonitor = new module.Monitor();
   const implicitController = makeInteractive(new module.Controller(greedy));
   const implicitEngine = new module.Engine(
-    implicitInput, JSON.stringify({ provider: 'static' }), implicitController, implicitMonitor);
+    implicitInput, held, implicitController, implicitMonitor);
+  const implicitDriver = new Driver(implicitEngine, implicitMonitor);
   implicitInput.delete();
 
-  implicitEngine.run(0);
+  await implicitDriver.run(0);
 
   const [ request ] = JSON.parse(implicitController.getPendingDecisions())
     .filter((decision) => decision.type === 'choice');
@@ -194,10 +197,11 @@ monitor.delete();
   const fractionalMonitor = new module.Monitor();
   const fractionalController = makeInteractive(new module.Controller(greedy));
   const fractionalEngine = new module.Engine(
-    fractionalInput, JSON.stringify({ provider: 'static' }), fractionalController, fractionalMonitor);
+    fractionalInput, held, fractionalController, fractionalMonitor);
+  const fractionalDriver = new Driver(fractionalEngine, fractionalMonitor);
   fractionalInput.delete();
 
-  fractionalEngine.run(0);
+  await fractionalDriver.run(0);
 
   const [ request ] = JSON.parse(fractionalController.getPendingDecisions())
     .filter((decision) => decision.type === 'choice');

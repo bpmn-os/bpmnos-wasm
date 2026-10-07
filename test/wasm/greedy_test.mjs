@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
-import { greedy } from './composition.mjs';
+import { greedy, held } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -32,13 +32,15 @@ const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller(greedy);
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
+const engine = new module.Engine(input, held, controller, monitor);
+// the data provider holds time, so the greedy run lets the engine advance it whenever it waits
+engine.advanceTime(0);
 input.delete();
 
 const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
-engine.run(0);
+await engine.run(0);
 check(!engine.isAlive(), 'the greedy composition ran to the end without being driven');
 check(Array.isArray(log) && log.length > 0, 'the monitor captured a log');
 check(log.some((e) => e.token && e.token.nodeId === 'Activity_1' && e.token.state === 'COMPLETED'),

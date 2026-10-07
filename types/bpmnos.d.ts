@@ -23,9 +23,10 @@ export interface Engine {
   /**
    * Draw the named scenario and run from the beginning, mirroring the execution engine's run. A
    * stochastic provider samples the base seed plus this index, so a different scenario id is a
-   * different sample of the same model.
+   * different sample of the same model. The run continues until it is terminated, and the caller acts
+   * while the engine waits, the run then being suspended.
    */
-  run(scenarioId: number): void;
+  run(scenarioId: number): Promise<void>;
   /**
    * Draw the named scenario and prepare a new engine without advancing it, mirroring the execution
    * engine's initialize. The run begins at the scenario's earliest instantiation time, and the clock
@@ -33,17 +34,37 @@ export interface Engine {
    * drive the engine yourself; run is this followed by resume.
    */
   initialize(scenarioId: number): void;
-  /** Continue a run, mirroring the execution engine's resume. */
-  resume(): void;
   /**
-   * Advance the run until the next event has to be fetched, mirroring the execution engine's advance.
-   * One call fetches a single event and advances the system state as far as it can without fetching the
-   * next, so a caller is never more than one event ahead of the records it has received.
-   *
-   * @returns True if an event was processed and the run may continue, false once it cannot.
+   * Continue a run, mirroring the execution engine's resume, until it is terminated; a run ended by an
+   * enqueued termination continues.
    */
-  advance(): boolean;
-  /** Report whether the system state is still alive; a run is done once this is false. */
+  resume(): Promise<void>;
+  /**
+   * Perform a single round, mirroring the execution engine's advance. One call fetches a single event and
+   * advances the system state as far as it can without fetching the next, so a caller is never more than
+   * one event ahead of the records it has received; a round yielding no event waits.
+   *
+   * @returns True while the run may continue, false once it is terminated.
+   */
+  advance(): Promise<boolean>;
+  /**
+   * Let the engine advance time whenever it waits, by a clock tick at once if the number is zero and
+   * otherwise once that wall-clock time has passed since the previous one. Used with a data provider
+   * holding time, and switchable at any moment of a run.
+   */
+  advanceTime(milliseconds: number): void;
+  /** Stop the engine from advancing time, the state of a new engine. */
+  holdTime(): void;
+  /** Report whether the engine advances time. */
+  isAdvancingTime(): boolean;
+  /**
+   * Pause or continue a running run. A paused run waits again and again without anything happening, time
+   * included, until it is continued, and is neither terminated nor ended.
+   */
+  setPaused(paused: boolean): void;
+  /** Report whether the run is paused. */
+  isPaused(): boolean;
+  /** Report whether the run is alive, which it is from its beginning until it is terminated. */
   isAlive(): boolean;
   /** Report the current simulated time. */
   getCurrentTime(): number;
@@ -62,8 +83,8 @@ export interface Monitor {
    * Register an observer invoked with each entry, as a JSON string, the moment it is recorded. Every
    * registered observer receives every entry, in the engine's execution order, so a caller attaches one
    * per module that needs the stream. The monitor keeps no history, so an observer attached after a run
-   * begins misses the entries before it. The observer runs during the engine's blocking run, so a caller
-   * that must not block the page runs the engine in a worker and forwards each entry from the observer.
+   * begins misses the entries before it. The observer runs during the run, as the engine records each
+   * entry.
    * Each entry is a single {"token"|"event"|"message"|"signal"|"entryRequest"|"exitRequest"|
    * "choiceRequest"|"messageDeliveryRequest": payload}; a decision request carries the deciding token, and
    * a message delivery request carries with it the senders the token accepts and the header it expects, so
@@ -106,33 +127,33 @@ export interface Controller {
    */
   getChoiceCandidates(instanceId: string, nodeId: string, selectedValues: string): string;
   /**
-   * Queue the entry of a waiting token, identified by its instance and node, for the next resume. The
+   * Queue the entry of a waiting token, identified by its instance and node, for the next round. The
    * decision is {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or
    * {"rejected":reason}. The engine auto-resolves feasible non-sequential entries itself.
    */
   enqueueEntryDecision(decisionJson: string): string;
   /**
-   * Queue the exit of a waiting token for the next resume. The decision is
+   * Queue the exit of a waiting token for the next round. The decision is
    * {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or {"rejected":reason}. The
    * engine auto-resolves feasible exits itself.
    */
   enqueueExitDecision(decisionJson: string): string;
   /**
-   * Queue a choice for a waiting token for the next resume. The decision is
+   * Queue a choice for a waiting token for the next round. The decision is
    * {"instanceId":s,"nodeId":s,"choices":[...]}, one value per choice of the decision task. Returns
    * {"queued":true} or {"rejected":reason}.
    */
   enqueueChoiceDecision(decisionJson: string): string;
   /**
-   * Queue the delivery of a message to a waiting token for the next resume. The decision is
+   * Queue the delivery of a message to a waiting token for the next round. The decision is
    * {"instanceId":s,"nodeId":s,"origin":s,"sender":s}, naming the chosen message by its origin and its
    * sender from the header. Returns {"queued":true} or {"rejected":reason}. The engine auto-resolves
    * directly addressed message deliveries itself.
    */
   enqueueMessageDeliveryDecision(decisionJson: string): string;
-  /** Queue a clock tick that advances simulated time by one unit at the next resume. */
+  /** Queue a clock tick that advances simulated time by one unit in the next round. */
   enqueueClockTickEvent(): string;
-  /** Queue a termination event that ends execution at the next resume. */
+  /** Queue a termination event that ends execution in the next round. */
   enqueueTerminationEvent(): string;
   /**
    * Let the dispatcher at this position of the composition speak again. The position is the one it was
@@ -171,9 +192,11 @@ export interface BPMNOSModule {
   Input: { new (bpmnXml: string): Input };
   /**
    * Build an engine from an input, the data provider to draw scenarios from (for example
-   * {"provider":"static"} or {"provider":"stochastic","seed":1}), the controller driving every run, and a
-   * monitor observing it or null for an unobserved run. The input is consumed, so one input builds one
-   * engine. A run without a controller would fetch no event, so one is required.
+   * {"provider":"static"} or {"provider":"stochastic","seed":1,"clockTickDuration":"hold"}), the controller
+   * driving every run, and a monitor observing it or null for an unobserved run. "clockTickDuration" is the
+   * wall-clock time between two clock ticks of the data provider in milliseconds, zero by default, or
+   * "hold", the data provider then never advancing time itself. The model of the input is built here, so
+   * one input builds one engine. A run without a controller would fetch no event, so one is required.
    */
   Engine: { new (input: Input, providerJson: string, controller: Controller, monitor: Monitor | null): Engine };
   Monitor: { new (): Monitor };
@@ -184,14 +207,14 @@ export interface BPMNOSModule {
    * A dispatcher is named by its class, or, for the ones a greedy dispatcher drives, by the candidates
    * class that distinguishes it: "FirstFeasibleExit", "FirstFeasibleEntry", "FirstEnumeratedChoice",
    * "FirstBisectionalChoice", "SequentialEntries", "MessageDeliveries", "CompetingCandidates",
-   * "InstantDirectMessage", "TimeWarp", "Metronome" or "Metronome(ms)", and "EnqueuedEvents". The evaluator
+   * "InstantDirectMessage", and "EnqueuedEvents". The evaluator
    * is "GuidedEvaluator" (the default) or "LocalEvaluator", and every evaluating dispatcher shares it.
    *
    * What a dispatcher settles is settled without the caller; what none of them settles waits for what the
    * caller enqueues, which the one "EnqueuedEvents" dispatches, so its position in the list is the
    * precedence of the caller's decisions. Exactly one is required: without it nothing could be enqueued,
-   * and with several the precedence would be undefined. A clock answers every fetch, so "TimeWarp" and
-   * "Metronome" come last, after the queue.
+   * and with several the precedence would be undefined. No dispatcher advances time: the data provider
+   * does, or the engine when it is let advance time.
    */
   Controller: { new (compositionJson: string): Controller };
 }

@@ -56,12 +56,13 @@ int main(int argc, char** argv) {
   input.setInstance(instanceCsv);
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::interactiveController();
-  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
+  Engine engine(Test::dataProvider(input), controller, monitor);
+  Test::Driver driver(engine);
 
   json log = json::array();
   monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
-  engine.run();
+  driver.run();
 
   // Entry and exit are resolved automatically, so the only pending decision is the choice.
   auto findChoiceRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
@@ -98,7 +99,7 @@ int main(int argc, char** argv) {
     check(choices.size() == controller->getChoices(request.get()).size(),
       "the walk ends with a value for every choice");
     check(controller->enqueueChoiceDecision(request, choices).has_value(), "enqueueChoiceDecision accepted");
-    engine.resume();
+    driver.proceed();
     request = findChoiceRequest();
   }
   check(request == nullptr, "no decision is pending after the choice");
@@ -133,10 +134,11 @@ int main(int argc, char** argv) {
     auto dependentMonitor = std::make_shared<Monitor>();
     auto dependentController = Test::interactiveController();
     Engine dependentEngine(
-      std::make_unique<Model::StochasticDataProvider>(dependentInput.release(), 0),
+      Test::dataProvider(dependentInput),
       dependentController, dependentMonitor);
+    Test::Driver dependentDriver(dependentEngine);
 
-    dependentEngine.run();
+    dependentDriver.run();
 
     std::shared_ptr<const Execution::DecisionRequest> dependent;
     for (const auto& weak : dependentController->getPendingRequests()) {
@@ -194,10 +196,11 @@ int main(int argc, char** argv) {
     auto implicitMonitor = std::make_shared<Monitor>();
     auto implicitController = Test::interactiveController();
     Engine implicitEngine(
-      std::make_unique<Model::StochasticDataProvider>(implicitInput.release(), 0),
+      Test::dataProvider(implicitInput),
       implicitController, implicitMonitor);
+    Test::Driver implicitDriver(implicitEngine);
 
-    implicitEngine.run();
+    implicitDriver.run();
 
     std::shared_ptr<const Execution::DecisionRequest> implicit;
     for (const auto& weak : implicitController->getPendingRequests()) {
@@ -242,10 +245,11 @@ int main(int argc, char** argv) {
     auto fractionalMonitor = std::make_shared<Monitor>();
     auto fractionalController = Test::interactiveController();
     Engine fractionalEngine(
-      std::make_unique<Model::StochasticDataProvider>(fractionalInput.release(), 0),
+      Test::dataProvider(fractionalInput),
       fractionalController, fractionalMonitor);
+    Test::Driver fractionalDriver(fractionalEngine);
 
-    fractionalEngine.run();
+    fractionalDriver.run();
 
     std::shared_ptr<const Execution::DecisionRequest> fractional;
     for (const auto& weak : fractionalController->getPendingRequests()) {

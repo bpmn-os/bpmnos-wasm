@@ -54,12 +54,13 @@ int main(int argc, char** argv) {
   input.setInstance(instanceCsv);
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::interactiveController();
-  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
+  Engine engine(Test::dataProvider(input), controller, monitor);
+  Test::Driver driver(engine);
 
   json log = json::array();
   monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
-  engine.run();
+  driver.run();
 
   // Every other entry is resolved automatically, so the only pending decision is the sequential entry.
   auto findEntryRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
@@ -80,7 +81,7 @@ int main(int argc, char** argv) {
   while (request && guard++ < 50) {
     check(controller->enqueueEntryDecision(request, std::nullopt).has_value(), "enqueueEntryDecision accepted");
     ++entered;
-    engine.resume();
+    driver.proceed();
     request = findEntryRequest();
   }
   check(request == nullptr, "no decision is pending after the sequential entries");

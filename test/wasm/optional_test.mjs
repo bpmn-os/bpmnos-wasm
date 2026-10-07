@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
+import { held } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -43,7 +44,7 @@ const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller(composition);
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
+const engine = new module.Engine(input, held, controller, monitor);
 input.delete();
 
 const log = [];
@@ -58,7 +59,7 @@ controller.deactivate(firstEnumeratedChoice);
 check(!controller.isActive(firstEnumeratedChoice), 'the dispatcher reports that it is silenced');
 
 engine.initialize(0);
-while (engine.advance() && !choicePending()) {
+while ((await engine.advance()) && !choicePending()) {
   // carry the run forward until it can go no further or the choice is left to the caller
 }
 check(choicePending(), 'with the choice dispatcher silenced the run waits at the choice');
@@ -67,7 +68,7 @@ controller.activate(firstEnumeratedChoice);
 check(controller.isActive(firstEnumeratedChoice), 'the dispatcher reports that it speaks again');
 
 let guard = 0;
-while (engine.advance() && guard++ < 10000) {
+while ((await engine.advance()) && guard++ < 10000) {
   // the reactivated dispatcher answers from candidates it kept while silent
 }
 check(guard < 10000, 'the run ended rather than standing still');

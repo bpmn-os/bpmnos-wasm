@@ -62,12 +62,13 @@ int main(int argc, char** argv) {
   input.setInstance(instanceCsv);
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::interactiveController();
-  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
+  Engine engine(Test::dataProvider(input), controller, monitor);
+  Test::Driver driver(engine);
 
   json log = json::array();
   monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
-  engine.run();
+  driver.run();
 
   auto findMessageRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
     for (const auto& weak : controller->getPendingRequests()) {
@@ -90,7 +91,7 @@ int main(int argc, char** argv) {
     check(controller->enqueueMessageDeliveryDecision(request, candidates.front()).has_value(),
           "enqueueMessageDeliveryDecision accepted");
     ++delivered;
-    engine.resume();
+    driver.proceed();
     request = findMessageRequest();
   }
   check(delivered == 1, "exactly one message was delivered");

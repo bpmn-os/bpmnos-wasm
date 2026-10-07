@@ -6,6 +6,7 @@
 // any other. The timer fixture is used because it cannot finish without a clock, so a run that terminates
 // proves the clock is part of the composition rather than of the engine.
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -54,7 +55,9 @@ int main(int argc, char** argv) {
   input.setInstance(instanceCsv);
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::greedyController();
-  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
+  Engine engine(Test::dataProvider(input), controller, monitor);
+  // the data provider holds time, so the greedy run lets the engine advance it whenever it waits
+  engine.advanceTime(std::chrono::milliseconds::zero());
 
   json log = json::array();
   monitor->addObserver([&](const json& entry) { log.push_back(entry); });
@@ -78,7 +81,7 @@ int main(int argc, char** argv) {
   bool refusedWithout = false;
   try {
     std::vector<std::unique_ptr<Execution::EventDispatcher>> none;
-    none.push_back(std::make_unique<Execution::TimeWarp>());
+    none.push_back(std::make_unique<Execution::InstantDirectMessage>());
     Controller composed(std::move(none));
   }
   catch (const std::exception&) {

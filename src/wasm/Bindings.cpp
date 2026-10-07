@@ -9,6 +9,7 @@
 // This translation unit belongs to the WebAssembly build only. It lives under src/wasm and is
 // compiled into the module by the Emscripten target, so it is never part of the native build.
 
+#include <chrono>
 #include <clocale>
 #include <memory>
 #include <optional>
@@ -19,6 +20,7 @@
 #include <vector>
 
 #include <emscripten/bind.h>
+#include <emscripten/emscripten.h>
 #include <emscripten/val.h>
 
 #include "Controller.h"
@@ -46,38 +48,64 @@ std::string inputGetLookupTableNames(Input& input) {
 }
 
 /**
- * @brief Builds the data provider the caller named, moving the assembled input into it.
+ * @brief Reads the clock tick duration from the description of a data provider.
+ *
+ * A number is the wall-clock time between two clock ticks in milliseconds, zero advancing time at once, and
+ * "hold" holds time, the data provider then never advancing it itself, so that time advances only by the
+ * clock ticks the caller enqueues.
+ *
+ * @param parsed The description of the data provider.
+ * @return The clock tick duration, zero if the description states none.
+ */
+std::chrono::milliseconds readClockTickDuration(const json& parsed) {
+  if (!parsed.contains("clockTickDuration")) {
+    return std::chrono::milliseconds::zero();
+  }
+  const json& duration = parsed["clockTickDuration"];
+  if (duration.is_string() && duration.get<std::string>() == "hold") {
+    return std::chrono::milliseconds::max();
+  }
+  if (duration.is_number_unsigned()) {
+    return std::chrono::milliseconds{duration.get<std::chrono::milliseconds::rep>()};
+  }
+  throw std::runtime_error("clockTickDuration must be a number of milliseconds or \"hold\"");
+}
+
+/**
+ * @brief Builds the data provider the caller named from the model and the instance data of the input.
  *
  * The names are the four kinds the engine offers; an unknown one is refused rather than defaulted, so a
  * misspelling is an error at construction rather than a run of the wrong flavour.
  *
- * @param input The assembled input, consumed here. The Input is empty afterwards, so one Input builds one
- * provider.
- * @param providerJson {"provider": "static"|"expected"|"dynamic"|"stochastic", "seed": n}, both optional.
- * @return The provider, owned by the engine it is handed to.
+ * @param input The assembled input, whose model is built here. The Input holds no tree afterwards, so one
+ * Input builds one provider.
+ * @param providerJson {"provider": "static"|"expected"|"dynamic"|"stochastic", "seed": n,
+ * "clockTickDuration": n|"hold"}, each optional.
+ * @return The provider, shared by the engine it is handed to and every scenario drawn from it.
  */
-std::unique_ptr<Model::DataProvider> createDataProvider(Input& input, const std::string& providerJson) {
+std::shared_ptr<Execution::DataProvider> createDataProvider(Input& input, const std::string& providerJson) {
   json parsed = json::parse(providerJson);
   std::string provider = parsed.value("provider", std::string("stochastic"));
+  auto clockTickDuration = readClockTickDuration(parsed);
   if (provider == "static") {
-    return std::make_unique<Model::StaticDataProvider>(input.release());
+    return std::make_shared<Execution::StaticDataProvider>(input.buildModel(), input.getInstance(), clockTickDuration);
   }
   if (provider == "expected") {
-    return std::make_unique<Model::ExpectedValueDataProvider>(input.release());
+    return std::make_shared<Execution::ExpectedValueDataProvider>(input.buildModel(), input.getInstance(), clockTickDuration);
   }
   if (provider == "dynamic") {
-    return std::make_unique<Model::DynamicDataProvider>(input.release());
+    return std::make_shared<Execution::DynamicDataProvider>(input.buildModel(), input.getInstance(), clockTickDuration);
   }
   if (provider == "stochastic") {
     // The base seed is fixed here; the scenario index a run adds is what varies the sample.
-    return std::make_unique<Model::StochasticDataProvider>(input.release(), parsed.value("seed", 0u));
+    return std::make_shared<Execution::StochasticDataProvider>(input.buildModel(), input.getInstance(), parsed.value("seed", 0u), clockTickDuration);
   }
   throw std::runtime_error("unknown provider: " + provider);
 }
 
 /**
- * @brief Constructs an Engine, since embind cannot marshal a BPMNOS::Model::Input, which owns the parsed
- * tree, nor a data provider built from it.
+ * @brief Constructs an Engine, since embind cannot marshal the parsed tree an Input holds, nor a data
+ * provider built from it.
  *
  * @param input The assembled input, consumed here.
  * @param providerJson The data provider to build, as documented on createDataProvider.
@@ -87,7 +115,24 @@ std::unique_ptr<Model::DataProvider> createDataProvider(Input& input, const std:
  */
 Engine* createEngine(Input& input, const std::string& providerJson,
                      std::shared_ptr<Controller> controller, std::shared_ptr<Monitor> monitor) {
-  return new Engine(createDataProvider(input, providerJson), std::move(controller), std::move(monitor));
+  auto* engine = new Engine(createDataProvider(input, providerJson), std::move(controller), std::move(monitor));
+  // While the engine waits, the run is suspended and the worker's event loop processes the messages of the
+  // page, which may enqueue decisions and clock ticks before the run continues. This requires JSPI.
+  engine->setWait([]() {
+    emscripten_sleep(static_cast<unsigned int>(Execution::Engine::SLEEP.count()));
+  });
+  return engine;
+}
+
+/**
+ * @brief Binds Engine::advanceTime, the clock tick duration crossing the boundary as a number of
+ * milliseconds.
+ *
+ * @param engine The engine.
+ * @param milliseconds The wall-clock time between two clock ticks, zero advancing time at once.
+ */
+void engineAdvanceTime(Engine& engine, unsigned int milliseconds) {
+  engine.advanceTime(std::chrono::milliseconds{milliseconds});
 }
 
 /**
@@ -111,9 +156,9 @@ std::shared_ptr<Execution::Evaluator> createEvaluator(const std::string& name) {
  *
  * A name is the class of the dispatcher, or, for the ones a GreedyDispatcher drives, the candidates class
  * that distinguishes it. Each of those keeps a share of the evaluator, so the composition needs no other
- * holder of it. Metronome is written with its clock tick duration in milliseconds, as "Metronome(500)", or
- * without it for the engine's own default. An unknown name is refused, since a silently dropped dispatcher
- * is a run that quietly decides something else than the caller composed.
+ * holder of it. No dispatcher advances time: the data provider does, or the engine when it is let advance
+ * time. An unknown name is refused, since a silently dropped dispatcher is a run that quietly decides
+ * something else than the caller composed.
  *
  * @param name The dispatcher to build.
  * @param evaluator The evaluator the evaluating ones are built against.
@@ -144,18 +189,6 @@ std::unique_ptr<Execution::EventDispatcher> createDispatcher(
   }
   if (name == "InstantDirectMessage") {
     return std::make_unique<Execution::InstantDirectMessage>();
-  }
-  if (name == "TimeWarp") {
-    return std::make_unique<Execution::TimeWarp>();
-  }
-  if (name == "Metronome") {
-    return std::make_unique<Execution::Metronome>();
-  }
-  if (name.starts_with("Metronome(") && name.back() == ')') {
-    // Ticks the clock in step with real time, so a run advances at the pace of a wall clock rather than as
-    // fast as it can; the argument is how long a tick lasts.
-    return std::make_unique<Execution::Metronome>(
-      static_cast<unsigned int>(std::stoul(name.substr(std::string("Metronome(").size()))));
   }
   if (name == "EnqueuedEvents") {
     return std::make_unique<EnqueuedEvents>();
@@ -589,10 +622,15 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
 
   class_<Engine>("Engine")
     .constructor(&createEngine, allow_raw_pointers())
-    .function("run", &Engine::run)
+    .function("run", &Engine::run, emscripten::async())
     .function("initialize", &Engine::initialize)
-    .function("resume", &Engine::resume)
-    .function("advance", &Engine::advance)
+    .function("resume", &Engine::resume, emscripten::async())
+    .function("advance", &Engine::advance, emscripten::async())
+    .function("setPaused", &Engine::setPaused)
+    .function("isPaused", &Engine::isPaused)
+    .function("advanceTime", &engineAdvanceTime)
+    .function("holdTime", &Engine::holdTime)
+    .function("isAdvancingTime", &Engine::isAdvancingTime)
     .function("isAlive", &Engine::isAlive)
     .function("getCurrentTime", &Engine::getCurrentTime)
     .function("getObjective", &Engine::getObjective);

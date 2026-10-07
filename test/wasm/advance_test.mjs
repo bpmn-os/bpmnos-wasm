@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
-import { greedy } from './composition.mjs';
+import { greedy, held } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -35,13 +35,15 @@ const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = new module.Controller(greedy);
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
+const engine = new module.Engine(input, held, controller, monitor);
+// the data provider holds time, so the greedy run lets the engine advance it whenever it waits
+engine.advanceTime(0);
 input.delete();
 
 let log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
-engine.run(0);
+await engine.run(0);
 const expected = log;
 const expectedAlive = engine.isAlive();
 const expectedTime = engine.getCurrentTime();
@@ -60,7 +62,7 @@ check(log.every((entry, index) => JSON.stringify(entry) === JSON.stringify(expec
   'what initialize produced is the beginning of the same stream');
 
 let advances = 0;
-while (engine.advance()) {
+while (await engine.advance()) {
   ++advances;
 }
 

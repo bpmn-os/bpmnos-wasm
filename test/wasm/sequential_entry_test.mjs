@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createBPMNOS from '../../dist/bpmnos.mjs';
-import { greedy, makeInteractive } from './composition.mjs';
+import { greedy, makeInteractive, held, Driver } from './composition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -30,13 +30,14 @@ const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = makeInteractive(new module.Controller(greedy));
-const engine = new module.Engine(input, JSON.stringify({ provider: 'static' }), controller, monitor);
+const engine = new module.Engine(input, held, controller, monitor);
+const driver = new Driver(engine, monitor);
 input.delete();
 
 const log = [];
 monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 
-engine.run(0);
+await driver.run(0);
 let pending = JSON.parse(controller.getPendingDecisions());
 check(pending.length > 0, 'the engine stopped at a sequential entry');
 
@@ -49,7 +50,7 @@ while (pending.length > 0 && guard++ < 50) {
   check(!('rejected' in JSON.parse(controller.enqueueEntryDecision(JSON.stringify(decision)))),
     'enqueueEntryDecision accepted');
   entered += 1;
-  engine.resume();
+  await driver.proceed();
   pending = JSON.parse(controller.getPendingDecisions());
 }
 

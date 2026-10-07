@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
   constexpr std::size_t beyondTheComposition = 4;
   auto controller = std::make_shared<Controller>(std::move(dispatchers));
 
-  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
+  Engine engine(Test::dataProvider(input), controller, monitor);
 
   json log = json::array();
   monitor->addObserver([&](const json& entry) { log.push_back(entry); });

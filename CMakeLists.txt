@@ -18,9 +18,13 @@ endif()
 # The engine is the only dependency this project names. bpmn++ and Xerces-C++ are the engine's, declared by
 # it and fetched by it when a copy cannot be resolved, which holds for a cross compile as much as for a
 # native one; neither is staged here any more.
-set(BPMNOS_VERSION 0.1.0)
+#
+# The engine is pinned by commit rather than by version, because its interfaces are still changing while its
+# declared version does not change with every interface change. Neither build therefore accepts an installed
+# engine in place of the fetch, which could shadow the pinned revision and silently supply a different
+# interface; both always build against the revision named here.
 set(BPMNOS_ENGINE_REPO "https://github.com/bpmn-os/bpmnos-engine.git" CACHE STRING "engine repository")
-set(BPMNOS_ENGINE_TAG  "2abbaf3dd4880c090df67e81b1461809b77dd1de" CACHE STRING "engine revision")
+set(BPMNOS_ENGINE_TAG  "61c97f7c0e5d5175817cfde52bec73bb35ea3aa7" CACHE STRING "engine revision")
 
 # The bridge library. Its sources are toolchain independent; the include paths and the way the
 # engine is obtained differ between the native build and the WebAssembly build below.
@@ -36,16 +40,14 @@ target_include_directories(bpmnos_wasm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT EMSCRIPTEN)
   # ------------------------------------------------------------------------------------------
-  # Native build. The engine is resolved from a prefix when one satisfies the requirement and built as a
-  # subproject otherwise, exactly as the sibling bpmnos-rollout project does. This build is for developing
-  # and testing the bridge; it produces no WebAssembly.
+  # Native build. The engine is fetched at the pinned revision and built as a subproject. This build is for
+  # developing and testing the bridge; it produces no WebAssembly.
   # ------------------------------------------------------------------------------------------
   include(FetchContent)
   set(FETCHCONTENT_QUIET FALSE)
   FetchContent_Declare(bpmnos
     GIT_REPOSITORY ${BPMNOS_ENGINE_REPO}
     GIT_TAG        ${BPMNOS_ENGINE_TAG}
-    FIND_PACKAGE_ARGS ${BPMNOS_VERSION}
   )
   FetchContent_MakeAvailable(bpmnos)
 
@@ -56,7 +58,7 @@ if(NOT EMSCRIPTEN)
   enable_testing()
   # Each native test drives a fixture through the bridge and takes the fixture directory as its
   # one argument, so a test does not depend on the working directory.
-  foreach(scenario IN ITEMS timer choice structure sequential_entry message greedy advance optional)
+  foreach(scenario IN ITEMS timer choice structure sequential_entry message greedy advance optional clock)
     add_executable(native_${scenario}_test test/native/${scenario}_test.cpp)
     target_link_libraries(native_${scenario}_test PRIVATE bpmnos_wasm pthread)
     add_test(NAME ${scenario} COMMAND native_${scenario}_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)
@@ -87,8 +89,8 @@ else()
   set(transcoder iconv CACHE STRING "" FORCE)
   set(message-loader inmemory CACHE STRING "" FORCE)
 
-  # No FIND_PACKAGE_ARGS: a copy installed on this machine is a native one and could not be linked into a
-  # WebAssembly module, so the engine is always fetched and cross compiled here.
+  # The engine is fetched at the pinned revision and cross compiled here, a copy installed on this machine
+  # being a native one that could not be linked into a WebAssembly module in any case.
   FetchContent_Declare(bpmnos
     GIT_REPOSITORY ${BPMNOS_ENGINE_REPO}
     GIT_TAG        ${BPMNOS_ENGINE_TAG}
@@ -109,6 +111,8 @@ else()
     -sEXPORT_ES6=1
     -sEXPORT_NAME=createBPMNOS
     -sALLOW_MEMORY_GROWTH=1
+    # The run is suspended while the engine waits, so that the page's messages are processed meanwhile.
+    -sJSPI
   )
   set_target_properties(bpmnos_module PROPERTIES
     OUTPUT_NAME "bpmnos"

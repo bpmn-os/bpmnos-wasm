@@ -15,25 +15,35 @@ Input::Input(const std::string& bpmnXml) {
   if (!root) {
     throw std::runtime_error("failed to parse BPMN model");
   }
-  input.model = std::unique_ptr<XML::XMLObject>(root);
+  model = std::unique_ptr<XML::XMLObject>(root);
 }
 
 json Input::getLookupTableNames() const {
   return guarded([&] {
-    return json(Model::Model::getLookupTableNames(*input.model));
+    if (!model) {
+      throw std::runtime_error("the model has been built");
+    }
+    return json(Model::Model::getLookupTableNames(*model));
   });
 }
 
 void Input::addLookupTable(const std::string& name, const std::string& csv) {
-  input.lookupTables[name] = csv;
+  lookupTables[name] = csv;
 }
 
 void Input::setInstance(const std::string& csv) {
-  input.instance = csv;
+  instance = csv;
 }
 
-Model::Input Input::release() {
-  return std::move(input);
+std::shared_ptr<const Model::Model> Input::buildModel() {
+  if (!model) {
+    throw std::runtime_error("the model has been built");
+  }
+  return std::make_shared<const Model::Model>(std::move(model), std::move(lookupTables));
+}
+
+const std::string& Input::getInstance() const {
+  return instance;
 }
 
 } // namespace BPMNOS::WASM

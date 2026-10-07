@@ -1,11 +1,11 @@
 // Native clock tick test for the interactive bridge.
 //
 // The timer fixture is a start event, an intermediate catch timer that triggers at the value of the
-// trigger attribute, and an end event. With an interactive controller and no time handler the engine
-// runs to the timer and stops, because it can fetch no event: no decision is pending and time does not
-// advance on its own. The caller then advances the clock one tick at a time and resumes, and the process
-// terminates once simulated time reaches the trigger. This checks that the engine stops waiting for the
-// clock, that each clock tick advances time by one, and that the timer fires and the process completes.
+// trigger attribute, and an end event. With an interactive controller and a data provider holding time,
+// the engine runs to the timer and waits, because no event is due: no decision is pending and time does
+// not advance on its own. The caller then advances the clock one tick at a time and proceeds, and the run
+// ends once simulated time reaches the trigger. This checks that the engine waits for the clock, that each
+// clock tick advances time by one, and that the timer fires and the process completes.
 
 #include <cstdlib>
 #include <fstream>
@@ -53,12 +53,13 @@ int main(int argc, char** argv) {
   input.setInstance(instanceCsv);
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::interactiveController();
-  Engine engine(std::make_unique<Model::StochasticDataProvider>(input.release(), 0), controller, monitor);
+  Engine engine(Test::dataProvider(input), controller, monitor);
+  Test::Driver driver(engine);
 
   json log = json::array();
   monitor->addObserver([&](const json& entry) { log.push_back(entry); });
 
-  engine.run();
+  driver.run();
   check(controller->getPendingRequests().empty(), "no decision is pending; the timer waits for the clock");
   check(engine.isAlive(), "the system is alive, waiting for the timer");
 
@@ -68,7 +69,7 @@ int main(int argc, char** argv) {
   while (engine.isAlive() && guard++ < 20) {
     controller->enqueueClockTickEvent();
     double previousTime = engine.getCurrentTime();
-    engine.resume();
+    driver.proceed();
     check(engine.getCurrentTime() == previousTime + 1, "a clock tick advances time by one");
     ++ticks;
   }
