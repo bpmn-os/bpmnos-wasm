@@ -10,18 +10,24 @@ handles. `types/bpmnos.d.ts` has the signatures and JSON shapes. All four decisi
 and one autonomous run are covered by native and WebAssembly tests that pass with no sanitizer finding.
 
 `Input` parses the model once, reports the referenced lookup tables through `getLookupTableNames`
-(`Model::getLookupTableNames`), and takes the lookup tables and instance as text. It yields a
-`BPMNOS::Model::Input`, moved out when an `Engine` is built.
+(`Model::getLookupTableNames`), and takes the lookup tables and instance as text. When an `Engine` is built,
+it builds the model from the tree and the lookup tables by `buildModel`, and the data provider is built from
+the model and the instance data, its clock tick duration being a number of milliseconds or `"hold"`.
 
 `Engine` is given the parts a run is made of and assembles nothing: the data provider arrives built, the
 controller drives every run, and a monitor, if there is one, observes it. `initialize(scenarioId)` draws a
 scenario and prepares a fresh engine without carrying it forward, beginning at the scenario's earliest
 instantiation time, so the first record of the stream is the clock tick stating the instant the run begins
-at; `advance` carries it forward by a single fetched event and answers whether it may be asked again, which
-is how a caller drives a run without ever being further ahead than what it has drawn; `run(scenarioId)` is
-`initialize` followed by `resume`, reusing the parse. `resume`, `isAlive`, `getCurrentTime` and
-`getObjective` follow the execution engine, the last mirroring the system state's own and reporting the
-objective the engine maintains as the first global attribute. A controller is required, a run without one
+at; `advance` performs a single round and answers whether the run continues, which is how a caller drives a
+run without ever being further ahead than what it has drawn; `run(scenarioId)` is `initialize` followed by
+`resume`, reusing the parse. A run continues until it is terminated, and the caller acts while the engine
+waits, which is whenever a round yields no event: the bridge sets the engine's `wait` to the function given
+by `setWait`, which in the WebAssembly build calls `emscripten_sleep`, so that with JSPI the run is suspended
+and the worker's event loop runs the caller's code, `run`, `resume` and `advance` returning promises. While
+`setPaused(true)` holds, the engine waits again and again, so that a run stands still without being
+terminated. `isAlive` answers from the end of the run, which is the processing of a termination event;
+`getCurrentTime` and `getObjective` follow the execution engine, the last mirroring the system state's own and
+reporting the objective the engine maintains as the first global attribute. A controller is required, a run without one
 fetching no event; a monitor is not, since an unobserved run still reports through `isAlive`,
 `getCurrentTime`, and `getObjective`.
 
@@ -35,13 +41,13 @@ settles waits for what the caller enqueues, which `EnqueuedEvents` dispatches, s
 is the precedence of the caller's decisions. It comes first, ahead of the deciders, so that a termination
 ends a run when it is given and an answer is dispatched before anything automatic settles something else.
 Exactly one is required, and the constructor refuses a composition with none or with several. The names the
-bindings build from are the engine's class names, `Metronome` optionally with its tick duration as
-`Metronome(500)`.
+bindings build from are the engine's class names. No dispatcher advances time.
 
 How much of a run the caller drives is neither a mode of the engine nor a second composition: `activate`,
 `deactivate` and `isActive` take a dispatcher's position in the composition and say whether it speaks, so one
-composition serves both and a run survives the change. Greedy is every dispatcher speaking; interactive is
-that composition with the choice, the competing candidates and the clock silenced. Only dispatching is
+composition serves both and a run survives the change. Greedy is every dispatcher speaking and the engine
+advancing time; interactive is that composition with the choice and the competing candidates silenced and time
+held. Only dispatching is
 withheld — connecting and noticing are untouched — so a silenced dispatcher's candidates go on being built
 and invalidated and it answers from an up-to-date set the moment it speaks again. The queue cannot be
 silenced, for the reason a composition without one is refused.
@@ -78,9 +84,9 @@ JavaScript API and `types/bpmnos.d.ts` declares it.
 
 ## Building and testing
 
-The bridge consumes the engine's amalgamated headers and its prebuilt static libraries and never
-modifies or rebuilds the engine. The default engine location is a sibling checkout, overridable with
-the `BPMNOS_ENGINE_DIR` cache variable.
+The bridge consumes the engine's amalgamated headers and libraries and never modifies the engine. Both
+builds fetch the engine at the commit the cache variable `BPMNOS_ENGINE_TAG` names, so that after the pin
+is moved a build directory is deleted or reconfigured with `-DBPMNOS_ENGINE_TAG` set to the new commit.
 
 ```
 cmake -S . -B build
@@ -88,11 +94,8 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The prebuilt engine archives are compiled with the address, undefined, and leak sanitizers, so the
-build links the bridge and the tests the same way. This is not optional; a plain link fails to
-resolve the sanitizer runtime. If a release build of the engine is used instead, clear the
-`BPMNOS_SANITIZE` cache variable. The tests read their fixtures from an absolute path passed on the
-command line, so they do not depend on the working directory.
+The tests read their fixtures from an absolute path passed on the command line, so they do not depend on
+the working directory.
 
 ## Working with the engine
 
@@ -152,19 +155,16 @@ the grid, because the values admitted are the multiples of the discretizer count
 caller's control counts its steps from the minimum it is given, and the two agree only once that minimum is
 itself a multiple. A bounded choice stating no discretizer is not asked of `getEnumeration`, which throws
 for a decimal and silently assumes a step of one for an integer or a boolean; its bounds are reported
-unmoved instead. A static scenario reports completion only once simulated time has passed the last
-instantiation, so a model with a single instance at time zero stays alive after all its work is done
-until time advances, which is why a clock is needed to reach a formally terminal state even for a model
-without timers. The pending decision lists prune expired entries only while traversed, and a built event
+unmoved instead. The pending decision lists prune expired entries only while traversed, and a built event
 self-validates through `Event::expired()`, so the bridge treats the weak pointer, not list membership, as
 liveness, and never holds a strong reference that would keep an engine object alive.
 
-Advancing simulated time is a matter of which dispatchers speak. With the clock silenced, or absent, time
-advances only by what the caller enqueues: a clock tick reaches the queue, is dispatched at the next fetch,
-and moves the current time by one, so a model with a timer reaches a terminal state once the caller has
-ticked past the trigger, which the native and WebAssembly timer tests exercise. With `TimeWarp` or
-`Metronome` speaking, time advances by itself, and either must stand last, because a clock answers every
-fetch and nothing behind it would ever be reached.
+Simulated time is advanced by the data provider or, with a data provider holding time, by the bridge. While
+time is held, it advances only by what the caller enqueues: a clock tick reaches the queue, is dispatched in
+the next round, and moves the current time by one, so a model with a timer reaches its end once the caller
+has ticked past the trigger, which the native and WebAssembly timer tests exercise. After `advanceTime`, the
+bridge enqueues a clock tick whenever the engine waits, at once or in step with real time, until `holdTime`;
+both may be called at any moment of a run, and no tick is enqueued while the run is paused.
 
 ## Branching
 

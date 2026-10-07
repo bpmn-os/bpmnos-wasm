@@ -19,11 +19,13 @@ emcmake cmake -S . -B build-wasm
 cmake --build build-wasm --target bpmnos_module
 ```
 
-This writes `dist/bpmnos.mjs` and `dist/bpmnos.wasm`. A dependency update requires a clean `build-wasm`,
-as the fetched dependencies are pinned on first configure.
+This writes `dist/bpmnos.mjs` and `dist/bpmnos.wasm`. The module is linked with JSPI, WebAssembly JavaScript
+Promise Integration, which the host must support. The engine is fetched at the commit `BPMNOS_ENGINE_TAG`
+names, a cache variable, so that after the pin is moved an existing build directory is either deleted or
+reconfigured with `-DBPMNOS_ENGINE_TAG` set to the new commit; a dependency update requires a clean
+`build-wasm` in any case, as the fetched dependencies are pinned on first configure.
 
-The native build, for developing the bridge, expects the engine as a sibling checkout (override with
-`BPMNOS_ENGINE_DIR`):
+The native build, for developing and testing the bridge, fetches the engine in the same way:
 
 ```
 cmake -S . -B build

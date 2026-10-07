@@ -1,12 +1,12 @@
 // The demo's engine worker.
 //
-// The engine's run is a single blocking call, so it runs here in a worker rather than on the page.
+// The engine's run continues until it is terminated, so it runs here in a worker rather than on the page.
 // The worker assembles an input from a model in three steps so the page can prompt for a model's lookup
 // tables before running: it parses a model and reports which lookup tables it references, accepts each
 // lookup table's CSV, and then, once instances are supplied, builds an engine and runs it. During the
 // run a monitor posts each observed entry to the page the moment it is recorded, so the log fills in as
-// execution proceeds. The controller is composed greedily, of every deciding dispatcher and a clock, so a
-// run settles everything itself and the page drives nothing. Because the engine is built once from the
+// execution proceeds. The controller is composed greedily, of every deciding dispatcher, and the engine
+// advances time whenever it waits, so a run settles everything itself and the page drives nothing. Because the engine is built once from the
 // input, repeated runs on the same instances reuse the parsed model and only advance the scenario, so each
 // run is the next stochastic sample.
 
@@ -42,17 +42,19 @@ function buildEngine(instances) {
   }
   input.setInstance(instances);
   monitor = new Module.Monitor();
-  // Each notification is posted the moment the monitor forwards it, from inside the blocking run.
+  // Each notification is posted the moment the monitor forwards it, from inside the run.
   monitor.addObserver((entry) => { self.postMessage({ type: 'entry', entry }); entryCount += 1; });
-  // The greedy composition: every decision settles itself, and the clock, which answers every fetch, comes
-  // after the queue so that what is enqueued is still dispatched.
+  // The greedy composition: every decision settles itself.
   controller = new Module.Controller(JSON.stringify({
     dispatchers: [
       'FirstFeasibleExit', 'FirstFeasibleEntry', 'InstantDirectMessage',
-      'FirstEnumeratedChoice', 'CompetingCandidates', 'EnqueuedEvents', 'TimeWarp'
+      'FirstEnumeratedChoice', 'CompetingCandidates', 'EnqueuedEvents'
     ]
   }));
-  engine = new Module.Engine(input, JSON.stringify({ provider: 'stochastic', seed: 0 }), controller, monitor);
+  // The data provider holds time and the engine advances it whenever it waits, at once.
+  engine = new Module.Engine(
+    input, JSON.stringify({ provider: 'stochastic', seed: 0, clockTickDuration: 'hold' }), controller, monitor);
+  engine.advanceTime(0);
   input.delete();
   scenarioId = 0;
   lastInstances = instances;
@@ -98,7 +100,7 @@ self.onmessage = async (event) => {
       entryCount = 0;
       // Time only the engine's run.
       const startedAt = performance.now();
-      engine.run(scenarioId);
+      await engine.run(scenarioId);
       const engineMs = performance.now() - startedAt;
 
       self.postMessage({

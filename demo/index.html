@@ -50,7 +50,7 @@
   <script type="module">
     const $ = (id) => document.getElementById(id);
 
-    // The engine runs in a worker so the page stays responsive during the blocking run and can
+    // The engine runs in a worker so the page stays responsive during the run and can
     // paint each entry as it arrives. The worker keeps the engine across loading a model, receiving
     // its lookup tables, and running, so the page can prompt for the lookups a model needs.
     const worker = new Worker(new URL('./worker.mjs', import.meta.url), { type: 'module' });
