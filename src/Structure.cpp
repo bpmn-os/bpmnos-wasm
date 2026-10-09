@@ -55,7 +55,7 @@ const char* typeName(BPMNOS::ValueType type) {
  * engine's own grammar in another language, and would be wrong wherever the two readings differed. So the
  * kind is taken from what the choice holds rather than from the text it was built from.
  *
- * Nothing is evaluated. What a choice may take depends on the status, the data and the globals and is a
+ * Nothing is evaluated. What a choice may take depends on the status and the data and is a
  * question for an engine standing at the token; what a task states is a property of the model, and that is
  * all that is reported here.
  *

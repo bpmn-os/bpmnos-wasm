@@ -82,7 +82,7 @@ Engine.
 - `isAlive(): boolean` — whether the run is alive, which it is from its beginning until it is terminated; a
   run that waits is alive.
 - `getCurrentTime(): number` — the current simulated time.
-- `getObjective(): number` — the objective value the run maintains; a live running value, valid at any pause, not only at termination, and zero before the first run. The engine keeps the objective as the first global attribute, so every token entry carries the same value under the name that attribute is declared with, and a caller that reads the entries needs this call only where it observes nothing.
+- `getObjective(): number` — the objective value the run maintains; a live running value, valid at any pause, not only at termination, and zero before the first run. The engine holds the objective in the system state and not as an attribute, so no token entry carries it; a monitor reports every change of it as an `objective` entry, and a caller observing nothing reads it by this call.
 
 ## Monitor
 
@@ -96,6 +96,7 @@ Each entry is a single-keyed object naming the notification:
 ```
 {"token": …} | {"event": …} | {"message": …} |
 {"signal": {"name": s, "content": {key: value}}} |
+{"objective": {"value": v, "change": c}} |
 {"entryRequest"|"exitRequest"|"choiceRequest": …deciding token…} |
 {"messageDeliveryRequest": {…deciding token…, "senders": [s], "recipientHeader": {key: value|null}}}
 ```

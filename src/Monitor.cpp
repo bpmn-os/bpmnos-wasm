@@ -38,7 +38,7 @@ json deliveryCriterion(const Execution::Token& token) {
   }
 
   auto header = messageDefinition->getRecipientHeader(
-    token.getAttributeRegistry(), token.status, *token.data, token.globals);
+    token.getAttributeRegistry(), token.status, *token.data, token.getInstanceId());
   criterion["recipientHeader"] = json::object();
   size_t i = 0;
   for (const auto& [key, type] : messageDefinition->header) {
@@ -69,6 +69,7 @@ void Monitor::subscribe(Execution::Engine* engine) {
     Type::Event,
     Type::Message,
     Type::Signal,
+    Type::Objective,
     Type::EntryRequest,
     Type::ChoiceRequest,
     Type::ExitRequest,
@@ -96,6 +97,12 @@ void Monitor::notice(const Execution::Observable* observable) {
     case Type::Signal:
       entry = json{ {"signal", static_cast<const Execution::Signal*>(observable)->jsonify()} };
       break;
+    case Type::Objective: {
+      // the objective is held by the engine and reported whenever it changes, with the change
+      const auto* objective = static_cast<const Execution::Objective*>(observable);
+      entry = json{ {"objective", { {"value", (double)objective->value}, {"change", (double)objective->change} }} };
+      break;
+    }
     case Type::EntryRequest:
       entry = json{ {"entryRequest", static_cast<const Execution::DecisionRequest*>(observable)->token->jsonify()} };
       break;

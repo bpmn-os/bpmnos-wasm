@@ -69,7 +69,7 @@ std::vector<std::weak_ptr<const Execution::DecisionRequest>> Controller::getPend
 std::vector<const Model::Choice*> Controller::getChoices(const Execution::DecisionRequest* request) const {
   std::vector<const Model::Choice*> choices;
   const auto* token = request->token;
-  if (!token->node || !token->node->extensionElements) {
+  if (token->node->represents<BPMN::Process>() || !token->node->extensionElements) {
     return choices;
   }
   auto* extensionElements = token->node->extensionElements->as<Model::ExtensionElements>();
@@ -98,7 +98,6 @@ Controller::getChoiceCandidates(
   const auto* token = request->token;
   BPMNOS::Values status(token->status);
   BPMNOS::Values data(*token->data);
-  BPMNOS::Values globals(token->globals);
   if (systemState) {
     status[Model::ExtensionElements::Index::Timestamp] = systemState->currentTime;
   }
@@ -106,16 +105,16 @@ Controller::getChoiceCandidates(
   // The choices before the next one are applied in order, exactly as DecisionTask::determineAlternatives
   // applies them, since each is what the one after it is evaluated against.
   for (std::size_t i = 0; i < selectedValues.size(); ++i) {
-    choices[i]->attributeRegistry.setValue(choices[i]->attribute, status, data, globals, selectedValues[i]);
+    choices[i]->attributeRegistry.setValue(choices[i]->attribute, status, data, selectedValues[i]);
   }
 
   const auto* choice = choices[selectedValues.size()];
 
   if (!choice->enumeration.empty()) {
-    return std::make_tuple(choice->attribute, EnumeratedChoice(choice->getEnumeration(status, data, globals)));
+    return std::make_tuple(choice->attribute, EnumeratedChoice(choice->getEnumeration(status, data)));
   }
 
-  auto [lower, upper] = choice->getBounds(status, data, globals);
+  auto [lower, upper] = choice->getBounds(status, data);
 
   // What a discretized choice may take is what the choice itself says it may take. The grid is therefore
   // asked of it rather than computed here from the bounds and the discretizer: a grid computed twice is a
@@ -127,7 +126,7 @@ Controller::getChoiceCandidates(
   BPMNOS::number highest = upper;
 
   if (choice->multipleOf) {
-    auto values = choice->getEnumeration(status, data, globals);
+    auto values = choice->getEnumeration(status, data);
     if (values.empty()) {
       return std::make_tuple(choice->attribute, EnumeratedChoice{}); // the grid holds nothing within the bounds
     }
@@ -137,7 +136,7 @@ Controller::getChoiceCandidates(
 
     // The step is the discretizer the model states, reported at the precision it was evaluated at, since the
     // grid is counted from zero in that step and not from the value reported as the least.
-    if (auto step = choice->multipleOf->execute(status, data, globals); step.has_value()) {
+    if (auto step = choice->multipleOf->execute(status, data); step.has_value()) {
       multipleOf = std::abs(step.value());
     }
   }
@@ -157,7 +156,7 @@ std::vector<std::weak_ptr<const Execution::Message>> Controller::getMessageCandi
   const Execution::DecisionRequest* request) const {
   std::vector<std::weak_ptr<const Execution::Message>> candidates;
   const auto* token = request->token;
-  if (!systemState || !token->node || !token->node->extensionElements) {
+  if (!systemState || token->node->represents<BPMN::Process>() || !token->node->extensionElements) {
     return candidates;
   }
   auto* extensionElements = token->node->extensionElements->as<Model::ExtensionElements>();
@@ -169,7 +168,7 @@ std::vector<std::weak_ptr<const Execution::Message>> Controller::getMessageCandi
     return candidates;
   }
   auto recipientHeader = messageDefinition->getRecipientHeader(
-    token->getAttributeRegistry(), token->status, *token->data, token->globals);
+    token->getAttributeRegistry(), token->status, *token->data, token->getInstanceId());
   const auto& senders = extensionElements->messageCandidates;
   for (const auto& message : systemState->messages) {
     if (!message || message->state != Execution::Message::State::CREATED) {

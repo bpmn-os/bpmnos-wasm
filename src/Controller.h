@@ -114,8 +114,8 @@ public:
    * answer for one prefix at a time. Given as many values as the task has choices, there is no next choice
    * and nothing is returned.
    *
-   * The status, the data and the globals are copied before anything is applied, the data by value and not
-   * by the references SharedValues holds, so that computing an answer cannot write the run. The current
+   * The status and the data, which begins with the globals, are copied before anything is applied, the data
+   * by value and not by the references SharedValues holds, so that computing an answer cannot write the run. The current
    * time is stamped onto the copied status first, as the engine stamps it before it applies a choice, so
    * that a condition reading the timestamp is evaluated against the value the engine will use.
    *

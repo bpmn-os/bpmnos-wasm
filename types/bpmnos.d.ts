@@ -71,8 +71,8 @@ export interface Engine {
   /**
    * Report the objective value the run maintains, mirroring the system state's getObjective. It is a
    * live running value, valid at any pause, not only at termination, and zero before the first run.
-   * The engine keeps the objective as the first global attribute, so every token entry a monitor
-   * forwards carries the same value, written under the name that attribute is declared with.
+   * The engine holds the objective in the system state and not as an attribute, so no token entry a
+   * monitor forwards carries it.
    */
   getObjective(): number;
   delete(): void;
@@ -85,12 +85,13 @@ export interface Monitor {
    * per module that needs the stream. The monitor keeps no history, so an observer attached after a run
    * begins misses the entries before it. The observer runs during the run, as the engine records each
    * entry.
-   * Each entry is a single {"token"|"event"|"message"|"signal"|"entryRequest"|"exitRequest"|
+   * Each entry is a single {"token"|"event"|"message"|"signal"|"objective"|"entryRequest"|"exitRequest"|
    * "choiceRequest"|"messageDeliveryRequest": payload}; a decision request carries the deciding token, and
    * a message delivery request carries with it the senders the token accepts and the header it expects, so
    * that a caller replaying the entries matches a message against it rather than asking the engine. A
    * signal is reported once where it is broadcast, whether or not anything receives it, and names no
-   * sender: {"name":s,"content":{key: value}}.
+   * sender: {"name":s,"content":{key: value}}. The objective is reported whenever it changes, with its new
+   * value and the change: {"value":v,"change":c}.
    */
   addObserver(observer: (entryJson: string) => void): void;
   delete(): void;
