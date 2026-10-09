@@ -54,12 +54,12 @@ check(JSON.stringify(first) === JSON.stringify(second),
 
 // Each entry is a single-key object of a known kind, including the decision requests.
 const kinds = new Set([
-  'token', 'event', 'message',
+  'token', 'event', 'message', 'objective',
   'entryRequest', 'exitRequest', 'choiceRequest', 'messageDeliveryRequest',
 ]);
 const parsed = first.map((entry) => JSON.parse(entry));
 check(parsed.every((entry) => Object.keys(entry).length === 1 && kinds.has(Object.keys(entry)[0])),
-  'every entry is a single token, event, message, or decision request record');
+  'every entry is a single token, event, message, objective, or decision request record');
 check(parsed.some((entry) => Object.keys(entry)[0].endsWith('Request')),
   'a decision request is forwarded alongside the token, event, and message records');
 

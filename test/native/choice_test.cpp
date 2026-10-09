@@ -273,7 +273,7 @@ int main(int argc, char** argv) {
 
     // what the engine will actually accept, which is the set this answer has to describe
     auto admitted = fractionalController->getChoices(fractional.get()).front()->getEnumeration(
-      BPMNOS::Values{}, BPMNOS::Values{}, BPMNOS::Values{});
+      BPMNOS::Values{}, BPMNOS::Values{});
     check(!admitted.empty(), "the engine admits values");
     check((double)admitted.front() == (double)grid.lowest, "the least reported is the least admitted");
     check((double)admitted.back() == (double)grid.highest, "and the greatest reported the greatest admitted");
