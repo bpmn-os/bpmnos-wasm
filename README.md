@@ -4,7 +4,7 @@
 [![demo](https://github.com/bpmn-os/bpmnos-wasm/actions/workflows/pages.yml/badge.svg)](https://bpmn-os.github.io/bpmnos-wasm/)
 
 Compiles the BPMNOS execution engine to WebAssembly and exposes a JavaScript interface that drives it. It
-takes a BPMN model with its lookup tables and instance data, lets the caller act as the engine's
+takes a BPMN model with the contents of its inputs and its instance data, lets the caller act as the engine's
 dispatcher, and reports the engine's token, event, message, and decision-request notifications.
 
 The JavaScript API — the four classes, the drive loop, and the JSON shapes — is documented in

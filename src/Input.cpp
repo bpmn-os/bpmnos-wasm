@@ -18,17 +18,17 @@ Input::Input(const std::string& bpmnXml) {
   model = std::unique_ptr<XML::XMLObject>(root);
 }
 
-json Input::getLookupTableNames() const {
+json Input::getInputSources() const {
   return guarded([&] {
     if (!model) {
       throw std::runtime_error("the model has been built");
     }
-    return json(Model::Model::getLookupTableNames(*model));
+    return json(Model::Model::getInputSources(*model));
   });
 }
 
-void Input::addLookupTable(const std::string& name, const std::string& csv) {
-  lookupTables[name] = csv;
+void Input::addInputContent(const std::string& source, const std::string& content) {
+  inputContents[source] = content;
 }
 
 void Input::setInstance(const std::string& csv) {
@@ -39,7 +39,7 @@ std::shared_ptr<const Model::Model> Input::buildModel() {
   if (!model) {
     throw std::runtime_error("the model has been built");
   }
-  return std::make_shared<const Model::Model>(std::move(model), std::move(lookupTables));
+  return std::make_shared<const Model::Model>(std::move(model), std::move(inputContents));
 }
 
 const std::string& Input::getInstance() const {

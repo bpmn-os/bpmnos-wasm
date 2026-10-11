@@ -115,7 +115,7 @@ public:
    * and nothing is returned.
    *
    * The status and the data, which begins with the globals, are copied before anything is applied, the data
-   * by value and not by the references SharedValues holds, so that computing an answer cannot write the run. The current
+   * by value and not by the references SharedData holds, so that computing an answer cannot write the run. The current
    * time is stamped onto the copied status first, as the engine stamps it before it applies a choice, so
    * that a condition reading the timestamp is evaluated against the value the engine will use.
    *
@@ -162,7 +162,7 @@ public:
    * @param status The status to enter with, if any.
    * @return Nothing on acceptance, or a reason when the request has expired.
    */
-  std::expected<void, std::string> enqueueEntryDecision(std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Values> status);
+  std::expected<void, std::string> enqueueEntryDecision(std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Status> status);
 
   /**
    * @brief Enqueues the exit of the request's token, optionally with a status, for the next advance.
@@ -171,7 +171,7 @@ public:
    * @param status The status to exit with, if any.
    * @return Nothing on acceptance, or a reason when the request has expired.
    */
-  std::expected<void, std::string> enqueueExitDecision(std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Values> status);
+  std::expected<void, std::string> enqueueExitDecision(std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Status> status);
 
   /**
    * @brief Enqueues a choice for the request's token for the next advance.

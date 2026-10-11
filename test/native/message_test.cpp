@@ -55,10 +55,10 @@ int main(int argc, char** argv) {
     "Server1; ServerProcess;\n";
 
   Input input(modelXml);
-  json required = input.getLookupTableNames();
+  json required = input.getInputSources();
   check(required.is_array() && required.size() == 1 && required[0] == "costs.csv",
-        "getLookupTableNames reports the model's lookup table");
-  input.addLookupTable("costs.csv", costsCsv);
+        "getInputSources reports the source of the model's lookup table");
+  input.addInputContent("costs.csv", costsCsv);
   input.setInstance(instanceCsv);
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::interactiveController();

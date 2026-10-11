@@ -24,7 +24,7 @@ endif()
 # engine in place of the fetch, which could shadow the pinned revision and silently supply a different
 # interface; both always build against the revision named here.
 set(BPMNOS_ENGINE_REPO "https://github.com/bpmn-os/bpmnos-engine.git" CACHE STRING "engine repository")
-set(BPMNOS_ENGINE_TAG  "7c59e4344e31eee0ee6c6b59b460037f43ebd2d9" CACHE STRING "engine revision")
+set(BPMNOS_ENGINE_TAG  "6b5371b08711d52f8f9572fc696a72ddcdf04a9d" CACHE STRING "engine revision")
 
 # The bridge library. Its sources are toolchain independent; the include paths and the way the
 # engine is obtained differ between the native build and the WebAssembly build below.
@@ -58,7 +58,7 @@ if(NOT EMSCRIPTEN)
   enable_testing()
   # Each native test drives a fixture through the bridge and takes the fixture directory as its
   # one argument, so a test does not depend on the working directory.
-  foreach(scenario IN ITEMS timer choice structure sequential_entry message greedy advance optional clock)
+  foreach(scenario IN ITEMS timer choice structure sequential_entry message greedy advance optional clock objects)
     add_executable(native_${scenario}_test test/native/${scenario}_test.cpp)
     target_link_libraries(native_${scenario}_test PRIVATE bpmnos_wasm pthread)
     add_test(NAME ${scenario} COMMAND native_${scenario}_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures)

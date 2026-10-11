@@ -42,7 +42,6 @@ const char* typeName(BPMNOS::ValueType type) {
     case BPMNOS::INTEGER: return "integer";
     case BPMNOS::DECIMAL: return "decimal";
     case BPMNOS::STRING: return "string";
-    case BPMNOS::COLLECTION: return "collection";
   }
   return "";
 }
@@ -91,15 +90,15 @@ void collect(const BPMN::Scope& scope, json& decisions) {
 
 json describeModel(
   const std::string& bpmnXml,
-  const std::unordered_map<std::string, std::string>& lookupTables) {
+  const std::unordered_map<std::string, std::string>& inputContents) {
   return guarded([&] {
     auto* root = XML::XMLObject::createFromString(bpmnXml);
     if (!root) {
       throw std::runtime_error("failed to parse BPMN model");
     }
-    // The model is built here because what is reported is what building resolves; the lookup tables are
-    // needed for that build and for nothing else this call does.
-    Model::Model model(std::unique_ptr<XML::XMLObject>(root), lookupTables);
+    // The model is built here because what is reported is what building resolves; the contents of the inputs
+    // are needed for that build and for nothing else this call does.
+    Model::Model model(std::unique_ptr<XML::XMLObject>(root), inputContents);
 
     std::map<std::string, std::vector<std::string>> performers;
     json decisions = json::array();

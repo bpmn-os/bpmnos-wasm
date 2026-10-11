@@ -14,9 +14,9 @@ const module = await createBPMNOS();
 ## Describing a model
 
 `describeModel(descriptionJson: string): string` reports what the engine resolves as it builds a model,
-which a caller needs whether or not it runs anything. The description is `{"model": s, "lookupTables":
-{name: csv}?}`; the lookup tables are required because a model cannot be built without the content of every
-table it references, and are read for nothing else. The answer is
+which a caller needs whether or not it runs anything. The description is `{"model": s, "inputs":
+{source: content}?}`; the contents of the inputs are required because a model cannot be built without the
+content of every input it declares, and are read for nothing else. The answer is
 
 ```
 {"sequentialPerformers": [{"performer": s, "activities": [s]}],
@@ -45,8 +45,10 @@ Assembles a run's inputs. Its model is built when an Engine is built from it, so
 Engine.
 
 - `new Input(bpmnXml: string)` — parse the model.
-- `getLookupTableNames(): string` — a JSON array of the lookup table source names the model references.
-- `addLookupTable(name: string, csv: string)` — supply one lookup table by its source name.
+- `getInputSources(): string` — a JSON array of the sources of the inputs the model declares, its lookup
+  tables, matrices and objects.
+- `addInputContent(source: string, content: string)` — supply the content of one input by its source, CSV
+  for a lookup or a matrix and JSON for an object.
 - `setInstance(csv: string)` — supply the instance data.
 
 ## Engine
@@ -100,6 +102,12 @@ Each entry is a single-keyed object naming the notification:
 {"entryRequest"|"exitRequest"|"choiceRequest": …deciding token…} |
 {"messageDeliveryRequest": {…deciding token…, "senders": [s], "recipientHeader": {key: value|null}}}
 ```
+
+A token record renders the token's `status`, `data` and `globals` each as one object keyed by the names of
+the attributes, in the order of their declaration. A scalar attribute is rendered as a number, a truth value
+or a text, and an undefined value as `null`. An object attribute, an array or a value with fields, is rendered
+as JSON: a dimension as an array, fields as an object keyed by their names, and an undefined value within it
+as `null`. The content of a message and of a signal renders its arrays and objects the same way.
 
 A signal is reported once where it is broadcast, whether it was thrown within the model or raised from
 outside it, and whether or not anything receives it. It names no sender, a signal being broadcast without
@@ -174,7 +182,13 @@ the queue, and with the engine let advance time a run needs nothing from the cal
   multiple a little below the thirds, and further below with each one, so that neither bound was
   selectable although both are.
 - `enqueueEntryDecision(json)` / `enqueueExitDecision(json)` — `{"instanceId": s, "nodeId": s, "status":
-  [v, …]?}`.
+  {name: value}?}`. The status has the shape in which a token record renders it, so that a status read from
+  a record can be changed and given back. A scalar attribute takes a number, a truth value or a text, and
+  `null` makes it undefined. An object attribute takes JSON, which is fitted to the attribute as a whole
+  assignment is, padded with undefined values at a fixed dimension, refused if longer, and taking the length
+  at an open one; `null` makes every value undefined and keeps the lengths. An attribute the status does not
+  name keeps its value. A status naming what is not a status attribute of the token, or giving a value its
+  attribute cannot take, is rejected with the reason.
 - `enqueueChoiceDecision(json)` — `{"instanceId": s, "nodeId": s, "choices": [v, …]}`, one value per
   choice of the decision task, in the order the choices are stated. The values are positional where the
   record of a choice names its attributes, because a decision task is not forbidden to state two choices
@@ -205,7 +219,7 @@ provider.
 
 ```js
 const input = new module.Input(bpmnXml);
-for (const name of JSON.parse(input.getLookupTableNames())) input.addLookupTable(name, lookup[name]);
+for (const source of JSON.parse(input.getInputSources())) input.addInputContent(source, contents[source]);
 input.setInstance(instanceCsv);
 
 const monitor = new module.Monitor();

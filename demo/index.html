@@ -14,8 +14,8 @@
     .controls { display: grid; gap: 0.75rem; margin-bottom: 1rem; }
     label { display: flex; gap: 0.5rem; align-items: center; }
     label span { width: 9rem; }
-    #lookups { display: grid; gap: 0.75rem; }
-    #lookups:empty { display: none; }
+    #inputs { display: grid; gap: 0.75rem; }
+    #inputs:empty { display: none; }
     button { padding: 0.5rem 1.25rem; font-size: 1rem; width: fit-content; }
     #status { margin: 0.75rem 0; font-family: monospace; white-space: pre-wrap; }
     #log { flex: 1; min-height: 0; margin: 0; border: 1px solid gray; padding: 0.75rem;
@@ -31,7 +31,7 @@
 </head>
 <body>
   <h1>BPMNOS greedy run</h1>
-  <p>Choose a BPMN model. If it references lookup tables, the page asks for each as a CSV. Then choose
+  <p>Choose a BPMN model. If it declares inputs, the page asks for the content of each, a CSV or a JSON file. Then choose
      an instance CSV and run. Execution is driven by the engine's greedy controller with the guided
      evaluator over the stochastic data provider. The engine is built once from the model and instances,
      so each run advances to the next scenario and repeated runs may differ. The run happens in a worker,
@@ -39,7 +39,7 @@
 
   <div class="controls">
     <label><span>BPMN model</span><input type="file" id="model" accept=".bpmn,.xml"></label>
-    <div id="lookups"></div>
+    <div id="inputs"></div>
     <label><span>Instance CSV</span><input type="file" id="instances" accept=".csv"></label>
     <button id="run" disabled>Run</button>
   </div>
@@ -52,20 +52,20 @@
 
     // The engine runs in a worker so the page stays responsive during the run and can
     // paint each entry as it arrives. The worker keeps the engine across loading a model, receiving
-    // its lookup tables, and running, so the page can prompt for the lookups a model needs.
+    // the contents of its inputs, and running, so the page can prompt for the inputs a model needs.
     const worker = new Worker(new URL('./worker.mjs', import.meta.url), { type: 'module' });
 
     let moduleReady = false;
     let modelLoaded = false;
-    let requiredLookupTables = [];
-    const providedLookups = new Set();
+    let requiredInputs = [];
+    const providedInputs = new Set();
     let count = 0;
     let runStartedAt = 0;
 
     function updateRunEnabled() {
       const instanceChosen = $('instances').files.length > 0;
-      const lookupsReady = requiredLookupTables.every((source) => providedLookups.has(source));
-      $('run').disabled = !(moduleReady && modelLoaded && lookupsReady && instanceChosen);
+      const inputsReady = requiredInputs.every((source) => providedInputs.has(source));
+      $('run').disabled = !(moduleReady && modelLoaded && inputsReady && instanceChosen);
     }
 
     function clearLog() {
@@ -90,10 +90,10 @@
       if (atBottom) log.scrollTop = log.scrollHeight;
     }
 
-    // One file input per lookup table the model references, each keyed by its source name. Providing
-    // it sends the CSV to the worker and marks the lookup satisfied.
-    function renderLookupInputs(sources) {
-      const container = $('lookups');
+    // One file input per input the model declares, each keyed by its source name. Providing it sends the
+    // content to the worker and marks the input satisfied.
+    function renderInputFields(sources) {
+      const container = $('inputs');
       container.replaceChildren();
       for (const source of sources) {
         const label = document.createElement('label');
@@ -101,17 +101,17 @@
         span.textContent = source;
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.csv';
+        input.accept = '.csv,.json';
         input.addEventListener('change', async () => {
           const file = input.files[0];
           if (!file) {
-            providedLookups.delete(source);
+            providedInputs.delete(source);
             updateRunEnabled();
             return;
           }
-          const csv = await file.text();
-          worker.postMessage({ type: 'lookup', name: source, csv });
-          providedLookups.add(source);
+          const content = await file.text();
+          worker.postMessage({ type: 'input', source, content });
+          providedInputs.add(source);
           updateRunEnabled();
         });
         label.appendChild(span);
@@ -131,13 +131,13 @@
         moduleReady = true;
         $('status').textContent = 'module loaded; choose a BPMN model';
         updateRunEnabled();
-      } else if (message.type === 'lookups') {
+      } else if (message.type === 'inputs') {
         modelLoaded = true;
-        requiredLookupTables = message.required;
-        providedLookups.clear();
-        renderLookupInputs(requiredLookupTables);
-        $('status').textContent = requiredLookupTables.length
-          ? 'model loaded; provide ' + requiredLookupTables.length + ' lookup table(s), then an instance CSV'
+        requiredInputs = message.required;
+        providedInputs.clear();
+        renderInputFields(requiredInputs);
+        $('status').textContent = requiredInputs.length
+          ? 'model loaded; provide ' + requiredInputs.length + ' input(s), then an instance CSV'
           : 'model loaded; choose an instance CSV and run';
         updateRunEnabled();
       } else if (message.type === 'entry') {
@@ -164,10 +164,10 @@
     $('model').addEventListener('change', async () => {
       const file = $('model').files[0];
       modelLoaded = false;
-      requiredLookupTables = [];
-      providedLookups.clear();
-      $('lookups').replaceChildren();
-      // A model change invalidates the previously chosen instance and lookup files. In the
+      requiredInputs = [];
+      providedInputs.clear();
+      $('inputs').replaceChildren();
+      // A model change invalidates the previously chosen instance and input files. In the
       // BPMNOSInstances collection these are all named instance.csv and cannot be told apart by
       // name, and a page cannot see their path, so clear the instance selection and force the user
       // to pick the one that belongs to this model.

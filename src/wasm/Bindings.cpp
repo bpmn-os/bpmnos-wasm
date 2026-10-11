@@ -38,13 +38,13 @@ using namespace BPMNOS::WASM;
 namespace {
 
 /**
- * @brief Binds Input::getLookupTableNames, reporting the model's lookup table source names.
+ * @brief Binds Input::getInputSources, reporting the sources of the inputs the model declares.
  *
  * @param input The input.
- * @return The JSON array of lookup table source names as a string.
+ * @return The JSON array of source names as a string.
  */
-std::string inputGetLookupTableNames(Input& input) {
-  return input.getLookupTableNames().dump();
+std::string inputGetInputSources(Input& input) {
+  return input.getInputSources().dump();
 }
 
 /**
@@ -407,7 +407,8 @@ std::string controllerGetChoiceCandidates(
  * @brief Binds Controller::enqueueEntryDecision, resolving the request and parsing the status.
  *
  * @param controller The controller.
- * @param decisionJson {"instanceId": s, "nodeId": s, "status": [ ... ]?} as a string.
+ * @param decisionJson {"instanceId": s, "nodeId": s, "status": { name: value }?} as a string, the status in
+ *        the shape in which a token record renders it.
  * @return The JSON result as a string.
  */
 std::string controllerEnqueueEntryDecision(Controller& controller, const std::string& decisionJson) {
@@ -417,9 +418,13 @@ std::string controllerEnqueueEntryDecision(Controller& controller, const std::st
   }
   auto request = resolveRequest(controller, decision["instanceId"].get<std::string>(),
     decision["nodeId"].get<std::string>(), Execution::Observable::Type::EntryRequest);
-  std::optional<BPMNOS::Values> status;
-  if (decision.contains("status") && !decision["status"].is_null()) {
-    status = toValues(decision["status"]);
+  std::optional<BPMNOS::Status> status;
+  if (auto locked = request.lock(); locked && decision.contains("status") && !decision["status"].is_null()) {
+    auto given = toStatus(*locked->token, decision["status"]);
+    if (!given) {
+      return json{ {"rejected", given.error()} }.dump();
+    }
+    status = std::move(given.value());
   }
   return enqueueResult(controller.enqueueEntryDecision(request, status));
 }
@@ -428,7 +433,8 @@ std::string controllerEnqueueEntryDecision(Controller& controller, const std::st
  * @brief Binds Controller::enqueueExitDecision, resolving the request and parsing the status.
  *
  * @param controller The controller.
- * @param decisionJson {"instanceId": s, "nodeId": s, "status": [ ... ]?} as a string.
+ * @param decisionJson {"instanceId": s, "nodeId": s, "status": { name: value }?} as a string, the status in
+ *        the shape in which a token record renders it.
  * @return The JSON result as a string.
  */
 std::string controllerEnqueueExitDecision(Controller& controller, const std::string& decisionJson) {
@@ -438,9 +444,13 @@ std::string controllerEnqueueExitDecision(Controller& controller, const std::str
   }
   auto request = resolveRequest(controller, decision["instanceId"].get<std::string>(),
     decision["nodeId"].get<std::string>(), Execution::Observable::Type::ExitRequest);
-  std::optional<BPMNOS::Values> status;
-  if (decision.contains("status") && !decision["status"].is_null()) {
-    status = toValues(decision["status"]);
+  std::optional<BPMNOS::Status> status;
+  if (auto locked = request.lock(); locked && decision.contains("status") && !decision["status"].is_null()) {
+    auto given = toStatus(*locked->token, decision["status"]);
+    if (!given) {
+      return json{ {"rejected", given.error()} }.dump();
+    }
+    status = std::move(given.value());
   }
   return enqueueResult(controller.enqueueExitDecision(request, status));
 }
@@ -555,7 +565,7 @@ void monitorAddObserver(Monitor& monitor, val observer) {
 /**
  * @brief Binds describeModel, reporting what the model resolves.
  *
- * @param descriptionJson {"model": s, "lookupTables": {name: csv}?} as a string.
+ * @param descriptionJson {"model": s, "inputs": {source: content}?} as a string.
  * @return {"sequentialPerformers": [{"performer": s, "activities": [s]}]} or {"error": message}, as a
  *         string.
  */
@@ -565,13 +575,13 @@ std::string describeModelBinding(const std::string& descriptionJson) {
     if (!description.contains("model")) {
       throw std::runtime_error("description requires a model");
     }
-    std::unordered_map<std::string, std::string> lookupTables;
-    if (description.contains("lookupTables")) {
-      for (const auto& [name, csv] : description["lookupTables"].items()) {
-        lookupTables[name] = csv.get<std::string>();
+    std::unordered_map<std::string, std::string> inputContents;
+    if (description.contains("inputs")) {
+      for (const auto& [source, content] : description["inputs"].items()) {
+        inputContents[source] = content.get<std::string>();
       }
     }
-    return describeModel(description["model"].get<std::string>(), lookupTables);
+    return describeModel(description["model"].get<std::string>(), inputContents);
   }).dump();
 }
 
@@ -616,8 +626,8 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
 
   class_<Input>("Input")
     .constructor<std::string>()
-    .function("getLookupTableNames", &inputGetLookupTableNames)
-    .function("addLookupTable", &Input::addLookupTable)
+    .function("getInputSources", &inputGetInputSources)
+    .function("addInputContent", &Input::addInputContent)
     .function("setInstance", &Input::setInstance);
 
   class_<Engine>("Engine")

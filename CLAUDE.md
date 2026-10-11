@@ -9,10 +9,11 @@ take and return native types, the bindings translate and resolve the caller's id
 handles. `types/bpmnos.d.ts` has the signatures and JSON shapes. All four decision kinds, the clock tick,
 and one autonomous run are covered by native and WebAssembly tests that pass with no sanitizer finding.
 
-`Input` parses the model once, reports the referenced lookup tables through `getLookupTableNames`
-(`Model::getLookupTableNames`), and takes the lookup tables and instance as text. When an `Engine` is built,
-it builds the model from the tree and the lookup tables by `buildModel`, and the data provider is built from
-the model and the instance data, its clock tick duration being a number of milliseconds or `"hold"`.
+`Input` parses the model once, reports the sources of the inputs it declares through `getInputSources`
+(`Model::getInputSources`), and takes the content of each input, its lookup tables, matrices and objects, and
+the instance as text. When an `Engine` is built, it builds the model from the tree and the contents of the
+inputs by `buildModel`, and the data provider is built from the model and the instance data, its clock tick
+duration being a number of milliseconds or `"hold"`.
 
 `Engine` is given the parts a run is made of and assembles nothing: the data provider arrives built, the
 controller drives every run, and a monitor, if there is one, observes it. `initialize(scenarioId)` draws a
@@ -58,11 +59,14 @@ already selected), resolves an enqueued delivery to a message through `getMessag
 as the request weak pointer and its payload
 through `enqueue*`, returning `std::expected`. An enqueued decision is built into an event at once and
 dispatched only while `Event::expired()` is false. It names no evaluator: whichever dispatcher evaluates
-keeps a share of the one the bindings built.
+keeps a share of the one the bindings built. The status an entry or exit decision may carry arrives in the
+shape in which a token record renders a status, keyed by attribute name with objects as JSON, and `toStatus`
+in `src/Convert.h` builds the engine's `Status` from it and the token's own, so that the caller can do with an
+object whatever it can do with a scalar attribute.
 
 What a caller cannot read from the entries it replays is what the model resolves, and `describeModel` in
 `src/Structure.cpp` answers it: the sequential performers and the activities each performs, and the decision
-tasks with the choices each states, built from the XML and the lookup tables the model references and
+tasks with the choices each states, built from the XML and the contents of the inputs the model declares and
 nothing of a run. It is deliberately not part of `Input`, which assembles what a run is given rather than
 analysing it.
 

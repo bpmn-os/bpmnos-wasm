@@ -29,10 +29,10 @@ const instanceCsv =
   'Server1; ServerProcess;\n';
 
 const input = new module.Input(modelXml);
-const required = JSON.parse(input.getLookupTableNames());
+const required = JSON.parse(input.getInputSources());
 check(Array.isArray(required) && required.length === 1 && required[0] === 'costs.csv',
-  "getLookupTableNames reports the model's lookup table");
-input.addLookupTable('costs.csv', costsCsv);
+  "getInputSources reports the source of the model's lookup table");
+input.addInputContent('costs.csv', costsCsv);
 input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 const controller = makeInteractive(new module.Controller(greedy));

@@ -91,15 +91,15 @@ Controller::getChoiceCandidates(
   }
 
   // Copied before anything is applied, so that computing an answer cannot write the run. The data is
-  // copied by value: SharedValues holds references, and copying it would share the referents and make this
+  // copied by value: SharedData holds references, and copying it would share the referents and make this
   // an act rather than a question. The current time is stamped as Engine::process stamps it before it
   // applies a choice, so that a condition reading the timestamp is evaluated against the value the engine
   // will use rather than the one the token was last noticed at.
   const auto* token = request->token;
-  BPMNOS::Values status(token->status);
-  BPMNOS::Values data(*token->data);
+  BPMNOS::Status status(token->status);
+  BPMNOS::Data data(*token->data);
   if (systemState) {
-    status[Model::ExtensionElements::Index::Timestamp] = systemState->currentTime;
+    status.attributes[Model::ExtensionElements::Index::Timestamp] = systemState->currentTime;
   }
 
   // The choices before the next one are applied in order, exactly as DecisionTask::determineAlternatives
@@ -183,7 +183,7 @@ std::vector<std::weak_ptr<const Execution::Message>> Controller::getMessageCandi
 }
 
 std::expected<void, std::string> Controller::enqueueEntryDecision(
-  std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Values> status) {
+  std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Status> status) {
   auto locked = request.lock();
   if (!locked) {
     return std::unexpected("no matching pending decision");
@@ -193,7 +193,7 @@ std::expected<void, std::string> Controller::enqueueEntryDecision(
 }
 
 std::expected<void, std::string> Controller::enqueueExitDecision(
-  std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Values> status) {
+  std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Status> status) {
   auto locked = request.lock();
   if (!locked) {
     return std::unexpected("no matching pending decision");

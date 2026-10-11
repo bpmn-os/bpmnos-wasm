@@ -1,6 +1,8 @@
 #ifndef BPMNOS_WASM_CONVERT_H
 #define BPMNOS_WASM_CONVERT_H
 
+#include <expected>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -40,22 +42,64 @@ inline double toDouble(BPMNOS::number value) {
 }
 
 /**
- * @brief Converts a JSON array of numbers or nulls into a status or data value vector.
+ * @brief Returns the status of a token with the values a caller gives, in the shape in which a token record
+ * renders a status.
  *
- * @param array The JSON array, whose null elements become value-less entries.
- * @return The status or data value vector.
+ * The given status is a JSON object keyed by the names of status attributes. A scalar attribute takes a
+ * number, a truth value for a boolean, or a text for a string, as the record renders it, and null makes it
+ * undefined. An object attribute takes the JSON the record renders it as, which is fitted to the attribute as
+ * a whole assignment is: padded with undefined values at a fixed dimension, rejected if longer, and taking
+ * the length at an open one; null makes every value undefined and keeps the lengths. An attribute the given
+ * status does not name keeps the value the token holds.
+ *
+ * @param token The token whose status is given.
+ * @param given The status given.
+ * @return The status, or the reason the given status is refused.
  */
-inline BPMNOS::Values toValues(const json& array) {
-  BPMNOS::Values values;
-  for (const auto& element : array) {
-    if (element.is_null()) {
-      values.push_back(std::optional<BPMNOS::number>{});
+inline std::expected<BPMNOS::Status, std::string> toStatus(const Execution::Token& token, const json& given) {
+  if (!given.is_object()) {
+    return std::unexpected("a status must be an object keyed by the names of status attributes");
+  }
+  const auto& registry = token.getAttributeRegistry();
+  BPMNOS::Status status = token.status;
+  for (const auto& [name, value] : given.items()) {
+    const Model::Attribute* attribute = registry.contains(name) ? registry[name] : nullptr;
+    if (!attribute || attribute->category != Model::Attribute::Category::STATUS) {
+      return std::unexpected("'" + name + "' is no status attribute of the token");
+    }
+    if (attribute->isObject()) {
+      auto& object = status.objects[attribute->index];
+      if (value.is_null()) {
+        object = std::make_shared<const BPMNOS::Object>(
+          BPMNOS::Object{ object->layout, std::vector<BPMNOS::Value>(object->values.size()) });
+        continue;
+      }
+      try {
+        object = Model::Schema::of(*object->layout, false).fromJSON(value.dump());
+      }
+      catch (const std::exception& error) {
+        return std::unexpected("'" + name + "' cannot take the value given: " + std::string(error.what()));
+      }
+      continue;
+    }
+    auto& slot = status.attributes[attribute->index];
+    if (value.is_null()) {
+      slot = std::nullopt;
+    }
+    else if (attribute->type == BPMNOS::BOOLEAN && value.is_boolean()) {
+      slot = BPMNOS::number(value.get<bool>() ? 1 : 0);
+    }
+    else if (attribute->type == BPMNOS::STRING && value.is_string()) {
+      slot = BPMNOS::to_number(value.get<std::string>(), BPMNOS::STRING);
+    }
+    else if ((attribute->type == BPMNOS::INTEGER || attribute->type == BPMNOS::DECIMAL) && value.is_number()) {
+      slot = toNumber(value.get<double>());
     }
     else {
-      values.push_back(std::optional<BPMNOS::number>{ toNumber(element.get<double>()) });
+      return std::unexpected("'" + name + "' cannot take the value given");
     }
   }
-  return values;
+  return status;
 }
 
 /**

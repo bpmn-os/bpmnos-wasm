@@ -8,12 +8,12 @@
 
 export interface Input {
   /**
-   * Return a JSON array string of the lookup table source names the model references (the keys to
-   * supply to addLookupTable), so a caller can prompt for exactly those.
+   * Return a JSON array string of the sources of the inputs the model declares, its lookup tables,
+   * matrices and objects (the keys to supply to addInputContent), so a caller can prompt for exactly those.
    */
-  getLookupTableNames(): string;
-  /** Provide one lookup table by its source name. */
-  addLookupTable(name: string, csv: string): void;
+  getInputSources(): string;
+  /** Provide the content of one input by its source: CSV for a lookup or a matrix, JSON for an object. */
+  addInputContent(source: string, content: string): void;
   /** Provide the instance CSV. */
   setInstance(csv: string): void;
   delete(): void;
@@ -129,14 +129,17 @@ export interface Controller {
   getChoiceCandidates(instanceId: string, nodeId: string, selectedValues: string): string;
   /**
    * Queue the entry of a waiting token, identified by its instance and node, for the next round. The
-   * decision is {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or
-   * {"rejected":reason}. The engine auto-resolves feasible non-sequential entries itself.
+   * decision is {"instanceId":s,"nodeId":s,"status":{name:value}?}, the status in the shape a token record
+   * renders it, scalars and objects alike; an attribute it does not name keeps its value. Returns
+   * {"queued":true} or {"rejected":reason}, a status naming no status attribute of the token or giving a
+   * value its attribute cannot take being rejected. The engine auto-resolves feasible non-sequential
+   * entries itself.
    */
   enqueueEntryDecision(decisionJson: string): string;
   /**
    * Queue the exit of a waiting token for the next round. The decision is
-   * {"instanceId":s,"nodeId":s,"status":[...]?}. Returns {"queued":true} or {"rejected":reason}. The
-   * engine auto-resolves feasible exits itself.
+   * {"instanceId":s,"nodeId":s,"status":{name:value}?}, the status as for an entry. Returns {"queued":true}
+   * or {"rejected":reason}. The engine auto-resolves feasible exits itself.
    */
   enqueueExitDecision(decisionJson: string): string;
   /**
@@ -177,10 +180,10 @@ export interface Controller {
 export interface BPMNOSModule {
   /**
    * Report what the engine resolves as it builds a model, for a caller that must know it without running:
-   * {"model":s,"lookupTables":{name:csv}?} in, {"sequentialPerformers":[{"performer":s,"activities":[s]}],
+   * {"model":s,"inputs":{source:content}?} in, {"sequentialPerformers":[{"performer":s,"activities":[s]}],
    * "decisions":[{"node":s,"choices":[{"attribute":{"id":s,"name":s,"type":s},"kind":s,"discretized":b}]}]}
-   * or {"error":message} out. The lookup tables are required because a model cannot be built without the
-   * content of every table it references, and are read for nothing else.
+   * or {"error":message} out. The contents of the inputs are required because a model cannot be built
+   * without the content of every input it declares, and are read for nothing else.
    *
    * Each decision task is reported with the choices it states, in order, each of them either an
    * enumeration or a pair of bounds, which kind names as "enumeration" or "bounds"; discretized says

@@ -18,12 +18,12 @@ using json = nlohmann::ordered_json;
 /**
  * @brief Assembles, in memory, the inputs a run needs, parsing the model once and holding the tree.
  *
- * The lookup tables a model references are a property of its parsed tree, so this parses the BPMN XML
- * once, reports the referenced lookup tables through getLookupTableNames, and accumulates each lookup
- * table's content and the instance data. When an Engine is constructed, the model is built from the tree
- * and the lookup tables, and the data provider from the model and the instance data. A caller works through
- * this wrapper because the parsed tree is held as a unique pointer, which does not cross the JavaScript
- * boundary.
+ * The inputs a model declares, its lookup tables, matrices and objects, are a property of its parsed tree, so
+ * this parses the BPMN XML once, reports the sources of the inputs through getInputSources, and accumulates
+ * the content of each input and the instance data. When an Engine is constructed, the model is built from
+ * the tree and the contents of the inputs, and the data provider from the model and the instance data. A
+ * caller works through this wrapper because the parsed tree is held as a unique pointer, which does not cross
+ * the JavaScript boundary.
  */
 class Input {
 public:
@@ -35,19 +35,20 @@ public:
   explicit Input(const std::string& bpmnXml);
 
   /**
-   * @brief Reports the lookup table source names the model references, so the caller supplies each.
+   * @brief Reports the sources of the inputs the model declares, so that the caller supplies the content of
+   * each.
    *
-   * @return A JSON array of the lookup table source names, or {"error": message} on failure.
+   * @return A JSON array of the source names, or {"error": message} on failure.
    */
-  json getLookupTableNames() const;
+  json getInputSources() const;
 
   /**
-   * @brief Provides one lookup table's content, keyed by its source name.
+   * @brief Provides the content of one input, keyed by its source name.
    *
-   * @param name The lookup table source name.
-   * @param csv The lookup table CSV content.
+   * @param source The source name of the input.
+   * @param content The content: CSV for a lookup or a matrix, JSON for an object.
    */
-  void addLookupTable(const std::string& name, const std::string& csv);
+  void addInputContent(const std::string& source, const std::string& content);
 
   /**
    * @brief Provides the instance data.
@@ -57,7 +58,7 @@ public:
   void setInstance(const std::string& csv);
 
   /**
-   * @brief Builds the model from the parsed tree and the lookup tables, leaving this without a tree. Called
+   * @brief Builds the model from the parsed tree and the contents of the inputs, leaving this without a tree. Called
    * once, when the data provider of an Engine is built.
    *
    * @return The model, shared by the data provider and every engine of a run.
@@ -74,7 +75,7 @@ public:
 
 private:
   std::unique_ptr<XML::XMLObject> model;                      ///< The parsed model tree, until the model is built.
-  std::unordered_map<std::string, std::string> lookupTables;  ///< The lookup table contents keyed by source name.
+  std::unordered_map<std::string, std::string> inputContents; ///< The contents of the inputs keyed by source name.
   std::string instance;                                       ///< The instance CSV content.
 };
 

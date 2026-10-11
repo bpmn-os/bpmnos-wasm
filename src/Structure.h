@@ -21,14 +21,14 @@ using json = nlohmann::ordered_json;
  * builds the model once and reports what it resolved. What it reports is a property of the model, so it is
  * the same before a run, during one, and for a run that is merely being replayed.
  *
- * The lookup tables are taken because the engine cannot build a model without the content of every table it
- * references, not because they are read here. Nothing of a run is taken: no instance data, no engine.
+ * The contents of the inputs are taken because the engine cannot build a model without the content of every
+ * input it declares, not because they are read here. Nothing of a run is taken: no instance data, no engine.
  *
  * This is not Input's work. Input assembles what a run is given and hands it to an engine; this answers
  * what the model is.
  *
  * @param bpmnXml The BPMN model XML.
- * @param lookupTables The content of each lookup table the model references, keyed by its source name.
+ * @param inputContents The content of each input the model declares, keyed by its source name.
  * @return `{"sequentialPerformers": [{"performer": s, "activities": [s]}], "decisions": [{"node": s,
  *         "choices": [{"attribute": {"id": s, "name": s, "type": s}, "kind": s, "discretized": b}]}]}`, or
  *         `{"error": message}` where the model could not be built. A choice is stated either as an
@@ -39,7 +39,7 @@ using json = nlohmann::ordered_json;
  */
 json describeModel(
   const std::string& bpmnXml,
-  const std::unordered_map<std::string, std::string>& lookupTables);
+  const std::unordered_map<std::string, std::string>& inputContents);
 
 } // namespace BPMNOS::WASM
 

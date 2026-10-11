@@ -1,9 +1,9 @@
 // The demo's engine worker.
 //
 // The engine's run continues until it is terminated, so it runs here in a worker rather than on the page.
-// The worker assembles an input from a model in three steps so the page can prompt for a model's lookup
-// tables before running: it parses a model and reports which lookup tables it references, accepts each
-// lookup table's CSV, and then, once instances are supplied, builds an engine and runs it. During the
+// The worker assembles an input from a model in three steps so the page can prompt for a model's inputs
+// before running: it parses a model and reports the sources of the inputs it declares, accepts the content
+// of each input, and then, once instances are supplied, builds an engine and runs it. During the
 // run a monitor posts each observed entry to the page the moment it is recorded, so the log fills in as
 // execution proceeds. The controller is composed greedily, of every deciding dispatcher, and the engine
 // advances time whenever it waits, so a run settles everything itself and the page drives nothing. Because the engine is built once from the
@@ -17,7 +17,7 @@ ready.then(() => self.postMessage({ type: 'ready' }));
 
 let Module = null;
 let modelXml = null;
-let lookupTables = {};
+let inputContents = {};
 let engine = null;
 let monitor = null;
 let controller = null;
@@ -32,13 +32,13 @@ function reset() {
   lastInstances = null;
 }
 
-// Build a fresh engine from the stored model, lookup tables, and the given instances. The input is
+// Build a fresh engine from the stored model, the contents of its inputs, and the given instances. The input is
 // consumed by construction, so it is assembled and released here each time the instances change.
 function buildEngine(instances) {
   reset();
   const input = new Module.Input(modelXml);
-  for (const [name, csv] of Object.entries(lookupTables)) {
-    input.addLookupTable(name, csv);
+  for (const [source, content] of Object.entries(inputContents)) {
+    input.addInputContent(source, content);
   }
   input.setInstance(instances);
   monitor = new Module.Monitor();
@@ -71,20 +71,20 @@ self.onmessage = async (event) => {
 
   try {
     if (message.type === 'loadModel') {
-      // A new model starts fresh; discard any engine from a previous model, then report the lookup
-      // tables the model references so the page can prompt for exactly those.
+      // A new model starts fresh; discard any engine from a previous model, then report the sources of the
+      // inputs the model declares so the page can prompt for exactly those.
       reset();
       modelXml = message.model;
-      lookupTables = {};
+      inputContents = {};
       const probe = new Module.Input(modelXml);
-      const required = JSON.parse(probe.getLookupTableNames());
+      const required = JSON.parse(probe.getInputSources());
       probe.delete();
-      self.postMessage({ type: 'lookups', required });
+      self.postMessage({ type: 'inputs', required });
       return;
     }
 
-    if (message.type === 'lookup') {
-      lookupTables[message.name] = message.csv;
+    if (message.type === 'input') {
+      inputContents[message.source] = message.content;
       return;
     }
 
