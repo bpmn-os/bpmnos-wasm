@@ -96,8 +96,9 @@ Engine.
 Each entry is a single-keyed object naming the notification:
 
 ```
-{"token": …} | {"event": …} | {"message": …} |
-{"signal": {"name": s, "content": {key: value}}} |
+{"token": …} | {"event": …} |
+{"message": {"origin": s, "state": s, "name": s, "header": {key: value|null}, "content": {…}}} |
+{"signal": {"name": s, "content": {…}}} |
 {"objective": {"value": v, "change": c}} |
 {"entryRequest"|"exitRequest"|"choiceRequest": …deciding token…} |
 {"messageDeliveryRequest": {…deciding token…, "senders": [s], "recipientHeader": {key: value|null}}}
@@ -107,7 +108,9 @@ A token record renders the token's `status`, `data` and `globals` each as one ob
 the attributes, in the order of their declaration. A scalar attribute is rendered as a number, a truth value
 or a text, and an undefined value as `null`. An object attribute, an array or a value with fields, is rendered
 as JSON: a dimension as an array, fields as an object keyed by their names, and an undefined value within it
-as `null`. The content of a message and of a signal renders its arrays and objects the same way.
+as `null`. The content of a message and of a signal is one object of the type the message or signal states,
+rendered as JSON in the same way, an object without fields if it states no type. The name of a message is given
+beside its header, which holds the sender, the recipient and the parameters the message states, and not in it.
 
 A signal is reported once where it is broadcast, whether it was thrown within the model or raised from
 outside it, and whether or not anything receives it. It names no sender, a signal being broadcast without

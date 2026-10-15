@@ -89,9 +89,11 @@ export interface Monitor {
    * "choiceRequest"|"messageDeliveryRequest": payload}; a decision request carries the deciding token, and
    * a message delivery request carries with it the senders the token accepts and the header it expects, so
    * that a caller replaying the entries matches a message against it rather than asking the engine. A
-   * signal is reported once where it is broadcast, whether or not anything receives it, and names no
-   * sender: {"name":s,"content":{key: value}}. The objective is reported whenever it changes, with its new
-   * value and the change: {"value":v,"change":c}.
+   * message is reported as {"origin":s,"state":s,"name":s,"header":{key: value|null},"content":{…}}, its
+   * name beside the header rather than in it. A signal is reported once where it is broadcast, whether or
+   * not anything receives it, and names no sender: {"name":s,"content":{…}}. The content of a message and
+   * of a signal is one object of the type it states, rendered as JSON. The objective is reported whenever
+   * it changes, with its new value and the change: {"value":v,"change":c}.
    */
   addObserver(observer: (entryJson: string) => void): void;
   delete(): void;
