@@ -329,7 +329,7 @@ std::vector<BPMNOS::number> toChoiceValues(
     if (selectedValue.is_null()) {
       break;
     }
-    if (choices[index]->attribute->type == BPMNOS::STRING) {
+    if (std::get<BPMNOS::ValueType>(choices[index]->attribute->type) == BPMNOS::STRING) {
       values.push_back(BPMNOS::to_number(selectedValue.get<std::string>(), BPMNOS::STRING));
     }
     else if (selectedValue.is_boolean()) {
@@ -379,7 +379,7 @@ std::string controllerGetChoiceCandidates(
   if (std::holds_alternative<EnumeratedChoice>(values)) {
     json enumeration = json::array();
     for (auto value : std::get<EnumeratedChoice>(values)) {
-      enumeration.push_back(renderChoiceValue(value, attribute->type));
+      enumeration.push_back(renderChoiceValue(value, std::get<BPMNOS::ValueType>(attribute->type)));
     }
     out["enumeration"] = enumeration;
   }
@@ -392,10 +392,10 @@ std::string controllerGetChoiceCandidates(
     // The step is reported as it is, and not as a value of the attribute: it is not one, and rounding it to
     // what an attribute can hold would give a caller a different grid from the one the engine admits.
     const auto& bounds = std::get<BoundedChoice>(values);
-    out["lowerBound"] = renderChoiceValue(bounds.lowerBound, attribute->type);
-    out["upperBound"] = renderChoiceValue(bounds.upperBound, attribute->type);
-    out["lowest"] = renderChoiceValue(bounds.lowest, attribute->type);
-    out["highest"] = renderChoiceValue(bounds.highest, attribute->type);
+    out["lowerBound"] = renderChoiceValue(bounds.lowerBound, std::get<BPMNOS::ValueType>(attribute->type));
+    out["upperBound"] = renderChoiceValue(bounds.upperBound, std::get<BPMNOS::ValueType>(attribute->type));
+    out["lowest"] = renderChoiceValue(bounds.lowest, std::get<BPMNOS::ValueType>(attribute->type));
+    out["highest"] = renderChoiceValue(bounds.highest, std::get<BPMNOS::ValueType>(attribute->type));
     if (bounds.multipleOf) {
       out["multipleOf"] = *bounds.multipleOf;
     }

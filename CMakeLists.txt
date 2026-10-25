@@ -24,7 +24,7 @@ endif()
 # engine in place of the fetch, which could shadow the pinned revision and silently supply a different
 # interface; both always build against the revision named here.
 set(BPMNOS_ENGINE_REPO "https://github.com/bpmn-os/bpmnos-engine.git" CACHE STRING "engine repository")
-set(BPMNOS_ENGINE_TAG  "83bee610b51624605d95cf847ccb8a3783a7673c" CACHE STRING "engine revision")
+set(BPMNOS_ENGINE_TAG  "e1ed1c2089f71447b8ecd13c83ce88f0d1e2e2c0" CACHE STRING "engine revision")
 
 # The bridge library. Its sources are toolchain independent; the include paths and the way the
 # engine is obtained differ between the native build and the WebAssembly build below.

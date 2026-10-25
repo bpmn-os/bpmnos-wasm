@@ -71,7 +71,7 @@ void collect(const BPMN::Scope& scope, json& decisions) {
             { "attribute", json{
               { "id", choice->attribute->id },
               { "name", choice->attribute->name },
-              { "type", typeName(choice->attribute->type) }
+              { "type", typeName(std::get<BPMNOS::ValueType>(choice->attribute->type)) }
             } },
             { "kind", choice->enumeration.empty() ? "bounds" : "enumeration" },
             { "discretized", choice->enumeration.empty() && choice->multipleOf != nullptr }

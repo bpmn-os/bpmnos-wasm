@@ -145,7 +145,7 @@ Controller::getChoiceCandidates(
   // values by construction; only a decimal is left without a grid at all. Reporting the implied step matters
   // as much as reporting a stated one, since a caller told of no step would offer values between the whole
   // ones, which the choice does not admit.
-  else if (choice->attribute->type == BPMNOS::INTEGER || choice->attribute->type == BPMNOS::BOOLEAN) {
+  else if (std::get<BPMNOS::ValueType>(choice->attribute->type) == BPMNOS::INTEGER || std::get<BPMNOS::ValueType>(choice->attribute->type) == BPMNOS::BOOLEAN) {
     multipleOf = 1.0;
   }
 

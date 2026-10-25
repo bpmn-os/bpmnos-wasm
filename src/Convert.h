@@ -70,12 +70,17 @@ inline std::expected<BPMNOS::Status, std::string> toStatus(const Execution::Toke
     if (attribute->isObject()) {
       auto& object = status.objects[attribute->index];
       if (value.is_null()) {
-        object = std::make_shared<const BPMNOS::Object>(
-          BPMNOS::Object{ object->layout, std::vector<BPMNOS::Value>(object->values.size()) });
+        auto undefined = std::make_shared<BPMNOS::Object>();
+        undefined->layout = object->layout;
+        undefined->values.resize(object->values.size());
+        object = std::move(undefined);
         continue;
       }
       try {
-        object = Model::Schema::of(*object->layout, false).fromJSON(value.dump());
+        // the target schema of a whole assignment, built from the effective schema of the attribute, which the data
+        // provider gives, and the layout of the object the token holds
+        const auto& effectiveSchema = token.owner->systemState->scenario->dataProvider->getSchema(attribute);
+        object = std::make_shared<BPMNOS::Object>(BPMNOS::Schema(effectiveSchema, *object->layout), nlohmann::json::parse(value.dump()));
       }
       catch (const std::exception& error) {
         return std::unexpected("'" + name + "' cannot take the value given: " + std::string(error.what()));
@@ -83,16 +88,17 @@ inline std::expected<BPMNOS::Status, std::string> toStatus(const Execution::Toke
       continue;
     }
     auto& slot = status.attributes[attribute->index];
+    auto type = std::get<BPMNOS::ValueType>(attribute->type);
     if (value.is_null()) {
       slot = std::nullopt;
     }
-    else if (attribute->type == BPMNOS::BOOLEAN && value.is_boolean()) {
+    else if (type == BPMNOS::BOOLEAN && value.is_boolean()) {
       slot = BPMNOS::number(value.get<bool>() ? 1 : 0);
     }
-    else if (attribute->type == BPMNOS::STRING && value.is_string()) {
+    else if (type == BPMNOS::STRING && value.is_string()) {
       slot = BPMNOS::to_number(value.get<std::string>(), BPMNOS::STRING);
     }
-    else if ((attribute->type == BPMNOS::INTEGER || attribute->type == BPMNOS::DECIMAL) && value.is_number()) {
+    else if ((type == BPMNOS::INTEGER || type == BPMNOS::DECIMAL) && value.is_number()) {
       slot = toNumber(value.get<double>());
     }
     else {
