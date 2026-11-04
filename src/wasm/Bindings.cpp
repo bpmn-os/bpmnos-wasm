@@ -166,9 +166,6 @@ std::shared_ptr<Execution::Evaluator> createEvaluator(const std::string& name) {
  */
 std::unique_ptr<Execution::EventDispatcher> createDispatcher(
   const std::string& name, const std::shared_ptr<Execution::Evaluator>& evaluator) {
-  if (name == "FirstFeasibleExit") {
-    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator);
-  }
   if (name == "FirstFeasibleEntry") {
     return std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator);
   }
@@ -218,13 +215,12 @@ std::shared_ptr<Controller> createController(const std::string& compositionJson)
  * @brief Maps a decision request kind to the caller's decision-type string.
  *
  * @param type The observable type of the request.
- * @return "entry", "exit", "choice", "messageDelivery", or empty.
+ * @return "entry", "choice", "messageDelivery", or empty.
  */
 std::string decisionType(Execution::Observable::Type type) {
   using Type = Execution::Observable::Type;
   switch (type) {
     case Type::EntryRequest: return "entry";
-    case Type::ExitRequest: return "exit";
     case Type::ChoiceRequest: return "choice";
     case Type::MessageDeliveryRequest: return "messageDelivery";
     default: return "";
@@ -430,32 +426,6 @@ std::string controllerEnqueueEntryDecision(Controller& controller, const std::st
 }
 
 /**
- * @brief Binds Controller::enqueueExitDecision, resolving the request and parsing the status.
- *
- * @param controller The controller.
- * @param decisionJson {"instanceId": s, "nodeId": s, "status": { name: value }?} as a string, the status in
- *        the shape in which a token record renders it.
- * @return The JSON result as a string.
- */
-std::string controllerEnqueueExitDecision(Controller& controller, const std::string& decisionJson) {
-  json decision = json::parse(decisionJson);
-  if (!decision.contains("instanceId") || !decision.contains("nodeId")) {
-    return json{ {"rejected", "decision requires instanceId and nodeId"} }.dump();
-  }
-  auto request = resolveRequest(controller, decision["instanceId"].get<std::string>(),
-    decision["nodeId"].get<std::string>(), Execution::Observable::Type::ExitRequest);
-  std::optional<BPMNOS::Status> status;
-  if (auto locked = request.lock(); locked && decision.contains("status") && !decision["status"].is_null()) {
-    auto given = toStatus(*locked->token, decision["status"]);
-    if (!given) {
-      return json{ {"rejected", given.error()} }.dump();
-    }
-    status = std::move(given.value());
-  }
-  return enqueueResult(controller.enqueueExitDecision(request, status));
-}
-
-/**
  * @brief Binds Controller::enqueueChoiceDecision, resolving the request and parsing the choices.
  *
  * @param controller The controller.
@@ -615,7 +585,6 @@ EMSCRIPTEN_BINDINGS(bpmnos_wasm) {
     .function("getPendingDecisions", &controllerGetPendingDecisions)
     .function("getChoiceCandidates", &controllerGetChoiceCandidates)
     .function("enqueueEntryDecision", &controllerEnqueueEntryDecision)
-    .function("enqueueExitDecision", &controllerEnqueueExitDecision)
     .function("enqueueChoiceDecision", &controllerEnqueueChoiceDecision)
     .function("enqueueMessageDeliveryDecision", &controllerEnqueueMessageDeliveryDecision)
     .function("activate", &Controller::activate)

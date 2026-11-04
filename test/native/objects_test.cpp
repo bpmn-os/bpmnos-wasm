@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
   // the entries are left to the caller, so that the task is entered with the status given
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::interactiveController();
-  controller->deactivate(2);
+  controller->deactivate(1);
   Engine engine(Test::dataProvider(input), controller, monitor);
   Test::Driver driver(engine);
 

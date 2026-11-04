@@ -59,7 +59,7 @@ already selected), resolves an enqueued delivery to a message through `getMessag
 as the request weak pointer and its payload
 through `enqueue*`, returning `std::expected`. An enqueued decision is built into an event at once and
 dispatched only while `Event::expired()` is false. It names no evaluator: whichever dispatcher evaluates
-keeps a share of the one the bindings built. The status an entry or exit decision may carry arrives in the
+keeps a share of the one the bindings built. The status an entry decision may carry arrives in the
 shape in which a token record renders a status, keyed by attribute name with objects as JSON, and `toStatus`
 in `src/Convert.h` builds the engine's `Status` from it and the token's own, so that the caller can do with an
 object whatever it can do with a scalar attribute.

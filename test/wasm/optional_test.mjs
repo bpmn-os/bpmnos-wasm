@@ -30,15 +30,15 @@ const instanceCsv =
   'Instance_1; Activity_1; x := -2\n';
 
 // The composition is stated here rather than taken from composition.mjs, so that the positions this test
-// switches are the ones it states and no reordering elsewhere can move them. The entry and the exit are
-// settled by their dispatchers, so the run reaches the choice; the choice dispatcher is what is silenced;
+// switches are the ones it states and no reordering elsewhere can move them. The entry is settled by its
+// dispatcher, so the run reaches the choice; the choice dispatcher is what is silenced;
 // the queue is what the caller would answer through.
 const composition = JSON.stringify({
-  dispatchers: [ 'EnqueuedEvents', 'FirstFeasibleExit', 'FirstFeasibleEntry', 'FirstEnumeratedChoice' ]
+  dispatchers: [ 'EnqueuedEvents', 'FirstFeasibleEntry', 'FirstEnumeratedChoice' ]
 });
 const enqueuedEvents = 0;
-const firstEnumeratedChoice = 3;
-const beyondTheComposition = 4;
+const firstEnumeratedChoice = 2;
+const beyondTheComposition = 3;
 
 const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);

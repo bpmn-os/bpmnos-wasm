@@ -60,7 +60,6 @@ std::vector<std::weak_ptr<const Execution::DecisionRequest>> Controller::getPend
     }
   };
   add(systemState->pendingEntryDecisions);
-  add(systemState->pendingExitDecisions);
   add(systemState->pendingChoiceDecisions);
   add(systemState->pendingMessageDeliveryDecisions);
   return requests;
@@ -189,16 +188,6 @@ std::expected<void, std::string> Controller::enqueueEntryDecision(
     return std::unexpected("no matching pending decision");
   }
   enqueued->enqueue(std::make_shared<Execution::EntryEvent>(locked->token, std::move(status)));
-  return {};
-}
-
-std::expected<void, std::string> Controller::enqueueExitDecision(
-  std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Status> status) {
-  auto locked = request.lock();
-  if (!locked) {
-    return std::unexpected("no matching pending decision");
-  }
-  enqueued->enqueue(std::make_shared<Execution::ExitEvent>(locked->token, std::move(status)));
   return {};
 }
 

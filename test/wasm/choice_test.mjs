@@ -1,4 +1,4 @@
-// WebAssembly choice test. Entry and exit are resolved automatically, so the only decision left for
+// WebAssembly choice test. The entry is resolved automatically, so the only decision left for
 // the caller is the choice, identified by the token's instance and node. This mirrors the native
 // choice test through the module's JavaScript interface.
 

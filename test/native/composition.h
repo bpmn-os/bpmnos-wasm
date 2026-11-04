@@ -23,8 +23,8 @@ namespace BPMNOS::WASM::Test {
  * @brief The interactive composition: what is unambiguous resolves itself, everything else waits for the
  * caller.
  *
- * The first feasible exit, the first feasible non sequential entry and the directly addressed message
- * delivery are settled by their dispatchers. No dispatcher offers a choice, the entry of a child of a
+ * The first feasible non sequential entry and the directly addressed message delivery are settled by their
+ * dispatchers. No dispatcher offers a choice, the entry of a child of a
  * sequential ad hoc subprocess, or an ambiguous message delivery, so those reach the queue. No dispatcher
  * advances time, so with a data provider holding time it advances only by a tick the caller enqueues.
  *
@@ -37,8 +37,6 @@ inline std::shared_ptr<Controller> interactiveController() {
   auto evaluator = std::make_shared<Execution::GuidedEvaluator>();
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
   dispatchers.push_back(std::make_unique<EnqueuedEvents>());
-  dispatchers.push_back(
-    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator));
   dispatchers.push_back(
     std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator));
   dispatchers.push_back(std::make_unique<Execution::InstantDirectMessage>());
@@ -57,8 +55,6 @@ inline std::shared_ptr<Controller> greedyController() {
   auto evaluator = std::make_shared<Execution::GuidedEvaluator>();
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
   dispatchers.push_back(std::make_unique<EnqueuedEvents>());
-  dispatchers.push_back(
-    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator));
   dispatchers.push_back(
     std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator));
   dispatchers.push_back(std::make_unique<Execution::InstantDirectMessage>());

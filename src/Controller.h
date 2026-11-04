@@ -46,8 +46,7 @@ struct BoundedChoice {
  * walks in order on every fetch. What a dispatcher settles is settled without the caller;
  * what none of them settles waits for what the caller enqueues, which is dispatched by the EnqueuedEvents
  * among them, so the position of that queue in the composition is its precedence. A composition of the
- * first feasible exit, the first feasible non sequential entry, the directly addressed message delivery and
- * the queue therefore leaves the caller the choice, the entry of a child of a sequential ad hoc subprocess
+ * first feasible non sequential entry, the directly addressed message delivery and the queue therefore leaves the caller the choice, the entry of a child of a sequential ad hoc subprocess
  * and the ambiguous message delivery, while a composition that adds the remaining greedy dispatchers before
  * the queue leaves the caller nothing but the clock and the termination.
  *
@@ -163,15 +162,6 @@ public:
    * @return Nothing on acceptance, or a reason when the request has expired.
    */
   std::expected<void, std::string> enqueueEntryDecision(std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Status> status);
-
-  /**
-   * @brief Enqueues the exit of the request's token, optionally with a status, for the next advance.
-   *
-   * @param request The exit decision request.
-   * @param status The status to exit with, if any.
-   * @return Nothing on acceptance, or a reason when the request has expired.
-   */
-  std::expected<void, std::string> enqueueExitDecision(std::weak_ptr<const Execution::DecisionRequest> request, std::optional<BPMNOS::Status> status);
 
   /**
    * @brief Enqueues a choice for the request's token for the next advance.

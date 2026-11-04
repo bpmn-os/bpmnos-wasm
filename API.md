@@ -100,7 +100,7 @@ Each entry is a single-keyed object naming the notification:
 {"message": {"origin": s, "state": s, "name": s, "header": {key: value|null}, "content": {…}}} |
 {"signal": {"name": s, "content": {…}}} |
 {"objective": {"value": v, "change": c}} |
-{"entryRequest"|"exitRequest"|"choiceRequest": …deciding token…} |
+{"entryRequest"|"choiceRequest": …deciding token…} |
 {"messageDeliveryRequest": {…deciding token…, "senders": [s], "recipientHeader": {key: value|null}}}
 ```
 
@@ -137,7 +137,6 @@ that distinguishes it:
 
 | Name | Dispatches |
 | --- | --- |
-| `FirstFeasibleExit` | the first feasible exit |
 | `FirstFeasibleEntry` | the first feasible entry, excluding children of a sequential ad hoc subprocess |
 | `FirstEnumeratedChoice` | the best feasible choice of a decision task, by enumeration |
 | `FirstBisectionalChoice` | the same, by bisection over a bounded choice |
@@ -152,13 +151,12 @@ evaluates shares the one built here. Exactly one `EnqueuedEvents` is required: w
 enqueued, and with several the precedence would fall to whichever was found first. No dispatcher advances
 time: the data provider does, or the engine when it is let advance time.
 
-The interactive composition is `["FirstFeasibleExit", "FirstFeasibleEntry", "InstantDirectMessage",
-"EnqueuedEvents"]`: the unambiguous decisions resolve themselves, and the choice, the sequential ad hoc entry
+The interactive composition is `["FirstFeasibleEntry", "InstantDirectMessage", "EnqueuedEvents"]`: the unambiguous decisions resolve themselves, and the choice, the sequential ad hoc entry
 and the ambiguous message delivery fall to the caller; with a data provider holding time, time advances only
 by an enqueued tick. The greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` before
 the queue, and with the engine let advance time a run needs nothing from the caller at all.
 
-- `getPendingDecisions(): string` — `[{"type": "entry"|"exit"|"choice"|"messageDelivery", "instanceId":
+- `getPendingDecisions(): string` — `[{"type": "entry"|"choice"|"messageDelivery", "instanceId":
   s, "nodeId": s}]`.
 - `getChoiceCandidates(instanceId: string, nodeId: string, selectedValues: string): string` — the next
   choice the decision task waits for, given the values selected so far. `{}` where the request no longer
@@ -184,7 +182,7 @@ the queue, and with the engine let advance time a run needs nothing from the cal
   the values are `1`, `1.333333`, `1.666667` and so on up to `10`. A step rounded first would put every
   multiple a little below the thirds, and further below with each one, so that neither bound was
   selectable although both are.
-- `enqueueEntryDecision(json)` / `enqueueExitDecision(json)` — `{"instanceId": s, "nodeId": s, "status":
+- `enqueueEntryDecision(json)` — `{"instanceId": s, "nodeId": s, "status":
   {name: value}?}`. The status has the shape in which a token record renders it, so that a status read from
   a record can be changed and given back. A scalar attribute takes a number, a truth value or a text, and
   `null` makes it undefined. An object attribute takes JSON, which is fitted to the attribute as a whole
@@ -228,7 +226,7 @@ input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 monitor.addObserver(entryJson => log(JSON.parse(entryJson)));
 const controller = new module.Controller(JSON.stringify({
-  dispatchers: [ 'FirstFeasibleExit', 'FirstFeasibleEntry', 'InstantDirectMessage', 'EnqueuedEvents' ]
+  dispatchers: [ 'FirstFeasibleEntry', 'InstantDirectMessage', 'EnqueuedEvents' ]
 }));
 const engine = new module.Engine(
   input, JSON.stringify({ provider: 'static', clockTickDuration: 'hold' }), controller, monitor);

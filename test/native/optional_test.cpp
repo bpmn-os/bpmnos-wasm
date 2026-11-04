@@ -56,18 +56,17 @@ int main(int argc, char** argv) {
   auto monitor = std::make_shared<Monitor>();
 
   // The composition is built here rather than taken from composition.h, so that the positions this test
-  // switches are the ones it states and no reordering elsewhere can move them. The entry and the exit are
-  // settled by their dispatchers, so the run reaches the choice; the choice dispatcher is what is silenced;
+  // switches are the ones it states and no reordering elsewhere can move them. The entry is settled by
+  // its dispatcher, so the run reaches the choice; the choice dispatcher is what is silenced;
   // the queue is last and is what the caller would answer through.
   auto evaluator = std::make_shared<Execution::GuidedEvaluator>();
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
-  dispatchers.push_back(std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleExit>>(evaluator));
   dispatchers.push_back(std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator));
   dispatchers.push_back(std::make_unique<Execution::GreedyDispatcher<Execution::FirstEnumeratedChoice>>(evaluator));
   dispatchers.push_back(std::make_unique<EnqueuedEvents>());
-  constexpr std::size_t firstEnumeratedChoice = 2;
-  constexpr std::size_t enqueuedEvents = 3;
-  constexpr std::size_t beyondTheComposition = 4;
+  constexpr std::size_t firstEnumeratedChoice = 1;
+  constexpr std::size_t enqueuedEvents = 2;
+  constexpr std::size_t beyondTheComposition = 3;
   auto controller = std::make_shared<Controller>(std::move(dispatchers));
 
   Engine engine(Test::dataProvider(input), controller, monitor);

@@ -85,8 +85,8 @@ export interface Monitor {
    * per module that needs the stream. The monitor keeps no history, so an observer attached after a run
    * begins misses the entries before it. The observer runs during the run, as the engine records each
    * entry.
-   * Each entry is a single {"token"|"event"|"message"|"signal"|"objective"|"entryRequest"|"exitRequest"|
-   * "choiceRequest"|"messageDeliveryRequest": payload}; a decision request carries the deciding token, and
+   * Each entry is a single {"token"|"event"|"message"|"signal"|"objective"|"entryRequest"|"choiceRequest"|
+   * "messageDeliveryRequest": payload}; a decision request carries the deciding token, and
    * a message delivery request carries with it the senders the token accepts and the header it expects, so
    * that a caller replaying the entries matches a message against it rather than asking the engine. A
    * message is reported as {"origin":s,"state":s,"name":s,"header":{key: value|null},"content":{…}}, its
@@ -102,7 +102,7 @@ export interface Monitor {
 export interface Controller {
   /**
    * Return the decisions left for the caller as a JSON array string, each carrying its kind and its
-   * token's instance and node: [{"type":"entry|exit|choice|messageDelivery","instanceId":s,"nodeId":s}].
+   * token's instance and node: [{"type":"entry|choice|messageDelivery","instanceId":s,"nodeId":s}].
    * For a choice, query the allowed values with getChoiceCandidates; for a message delivery, match the
    * messages seen against the criterion the request record carried.
    */
@@ -138,12 +138,6 @@ export interface Controller {
    * entries itself.
    */
   enqueueEntryDecision(decisionJson: string): string;
-  /**
-   * Queue the exit of a waiting token for the next round. The decision is
-   * {"instanceId":s,"nodeId":s,"status":{name:value}?}, the status as for an entry. Returns {"queued":true}
-   * or {"rejected":reason}. The engine auto-resolves feasible exits itself.
-   */
-  enqueueExitDecision(decisionJson: string): string;
   /**
    * Queue a choice for a waiting token for the next round. The decision is
    * {"instanceId":s,"nodeId":s,"choices":[...]}, one value per choice of the decision task. Returns
@@ -211,7 +205,7 @@ export interface BPMNOSModule {
    * {"evaluator":name?,"dispatchers":[name,...]}.
    *
    * A dispatcher is named by its class, or, for the ones a greedy dispatcher drives, by the candidates
-   * class that distinguishes it: "FirstFeasibleExit", "FirstFeasibleEntry", "FirstEnumeratedChoice",
+   * class that distinguishes it: "FirstFeasibleEntry", "FirstEnumeratedChoice",
    * "FirstBisectionalChoice", "SequentialEntries", "MessageDeliveries", "CompetingCandidates",
    * "InstantDirectMessage", and "EnqueuedEvents". The evaluator
    * is "GuidedEvaluator" (the default) or "LocalEvaluator", and every evaluating dispatcher shares it.

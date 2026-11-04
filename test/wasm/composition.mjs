@@ -12,7 +12,7 @@
 // a greedy run lets the engine advance it.
 export const dispatchers = [
   'EnqueuedEvents',
-  'FirstFeasibleExit', 'FirstFeasibleEntry', 'InstantDirectMessage',
+  'FirstFeasibleEntry', 'InstantDirectMessage',
   'FirstEnumeratedChoice', 'CompetingCandidates'
 ];
 

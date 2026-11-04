@@ -1,7 +1,7 @@
 // Native choice test for the interactive bridge.
 //
-// The decision task fixture enters an activity that offers a choice from an enumeration and exits it.
-// With an interactive controller the entry and the exit are resolved automatically, so the only decision
+// The decision task fixture enters an activity that offers a choice from an enumeration.
+// With an interactive controller the entry is resolved automatically, so the only decision
 // left for the caller is the choice. This checks that the engine stops exactly at the choice, that the
 // choice is offered with its enumeration keyed by the token's instance and node, and that an enqueued
 // value is applied and appears on the completed activity. The instance sets x to minus two, so the
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
 
   driver.run();
 
-  // Entry and exit are resolved automatically, so the only pending decision is the choice.
+  // The entry is resolved automatically, so the only pending decision is the choice.
   auto findChoiceRequest = [&]() -> std::shared_ptr<const Execution::DecisionRequest> {
     for (const auto& weak : controller->getPendingRequests()) {
       auto request = weak.lock();

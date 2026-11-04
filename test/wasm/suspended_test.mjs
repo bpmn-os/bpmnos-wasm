@@ -30,7 +30,7 @@ const instanceCsv =
 
 // The choice is not among the dispatchers, so it reaches the queue and is decided by this test.
 const composition = JSON.stringify({
-  dispatchers: [ 'EnqueuedEvents', 'FirstFeasibleExit', 'FirstFeasibleEntry', 'InstantDirectMessage' ]
+  dispatchers: [ 'EnqueuedEvents', 'FirstFeasibleEntry', 'InstantDirectMessage' ]
 });
 
 const input = new module.Input(modelXml);
