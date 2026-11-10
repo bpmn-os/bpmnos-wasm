@@ -1,9 +1,9 @@
 // Native test of inputs and objects through the bridge.
 //
 // The fixture's task assigns the cost of its route, read from a matrix input, and its route is a status
-// array of two elements. The input's content is supplied by its source name, the entry of the task is left to
-// the caller, and the caller enters it with a status in the shape a token record renders, which changes the
-// route. The test checks that the input is reported and read, that the status given replaces the route and
+// array of two elements. The input's content is supplied by its source name, the task is the child of a
+// sequential ad hoc subprocess, so that its entry is a decision left to the caller, and the caller enters it
+// with a status in the shape a token record renders, which changes the route. The test checks that the input is reported and read, that the status given replaces the route and
 // thereby the cost, and that a status naming no status attribute, or giving a route longer than its fixed
 // length, is refused.
 
@@ -60,10 +60,9 @@ int main(int argc, char** argv) {
   input.addInputContent("distance.csv", distanceCsv);
   input.setInstance(instanceCsv);
 
-  // the entries are left to the caller, so that the task is entered with the status given
+  // the entry of the task is left to the caller, so that the task is entered with the status given
   auto monitor = std::make_shared<Monitor>();
   auto controller = Test::interactiveController();
-  controller->deactivate(1);
   Engine engine(Test::dataProvider(input), controller, monitor);
   Test::Driver driver(engine);
 

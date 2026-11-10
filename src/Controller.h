@@ -124,8 +124,9 @@ public:
    * every type but the decimal; both are the engine's to decide and neither is recomputed here. The move to
    * the discretizer is this bridge's, because the values admitted are its multiples counted from zero while
    * a caller's control counts its steps from the minimum it is given, and the two agree only where that
-   * minimum is a multiple. Where a bounded choice states no discretizer, which a model may do although it
-   * should not, the bounds are reported unmoved and no discretizer is reported with them.
+   * minimum is a multiple. The step of an integer or a boolean is implied by its type where the model states
+   * none. Where a bounded choice of a decimal states no discretizer, the bounds are reported unmoved and no
+   * discretizer is reported with them.
    *
    * @param request The choice decision request.
    * @param selectedValues The values already chosen, in the order the choices are made.

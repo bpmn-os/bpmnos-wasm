@@ -46,10 +46,7 @@ function buildEngine(instances) {
   monitor.addObserver((entry) => { self.postMessage({ type: 'entry', entry }); entryCount += 1; });
   // The greedy composition: every decision settles itself.
   controller = new Module.Controller(JSON.stringify({
-    dispatchers: [
-      'FirstFeasibleExit', 'FirstFeasibleEntry', 'InstantDirectMessage',
-      'FirstEnumeratedChoice', 'CompetingCandidates', 'EnqueuedEvents'
-    ]
+    dispatchers: [ 'EnqueuedEvents', 'FirstChoice', 'CompetingCandidates' ]
   }));
   // The data provider holds time and the engine advances it whenever it waits, at once.
   engine = new Module.Engine(

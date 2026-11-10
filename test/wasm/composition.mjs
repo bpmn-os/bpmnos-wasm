@@ -12,8 +12,7 @@
 // a greedy run lets the engine advance it.
 export const dispatchers = [
   'EnqueuedEvents',
-  'FirstFeasibleEntry', 'InstantDirectMessage',
-  'FirstEnumeratedChoice', 'CompetingCandidates'
+  'FirstChoice', 'CompetingCandidates'
 ];
 
 /** Every decision settles itself, so a run whose engine advances time needs nothing from the caller. */
@@ -25,12 +24,12 @@ export const greedy = JSON.stringify({ dispatchers });
  * message delivery reach the queue. Read from the composition rather than written down, so reordering it
  * moves them.
  */
-export const greedyOnly = [ 'FirstEnumeratedChoice', 'CompetingCandidates' ]
+export const greedyOnly = [ 'FirstChoice', 'CompetingCandidates' ]
   .map(name => dispatchers.indexOf(name));
 
 /**
- * Silences what only a greedy run adds, leaving the controller interactive: what is unambiguous still
- * resolves itself and everything else waits for the caller.
+ * Silences what only a greedy run adds, leaving the controller interactive: what the engine carries out
+ * itself still happens and every decision waits for the caller.
  */
 export function makeInteractive(controller) {
   for (const index of greedyOnly) {

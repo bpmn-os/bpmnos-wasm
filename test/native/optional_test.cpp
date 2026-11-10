@@ -56,17 +56,16 @@ int main(int argc, char** argv) {
   auto monitor = std::make_shared<Monitor>();
 
   // The composition is built here rather than taken from composition.h, so that the positions this test
-  // switches are the ones it states and no reordering elsewhere can move them. The entry is settled by
-  // its dispatcher, so the run reaches the choice; the choice dispatcher is what is silenced;
+  // switches are the ones it states and no reordering elsewhere can move them. The engine enters the
+  // task itself, so the run reaches the choice; the choice dispatcher is what is silenced;
   // the queue is last and is what the caller would answer through.
   auto evaluator = std::make_shared<Execution::GuidedEvaluator>();
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
-  dispatchers.push_back(std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator));
-  dispatchers.push_back(std::make_unique<Execution::GreedyDispatcher<Execution::FirstEnumeratedChoice>>(evaluator));
+  dispatchers.push_back(std::make_unique<Execution::GreedyDispatcher<Execution::FirstChoice>>(evaluator));
   dispatchers.push_back(std::make_unique<EnqueuedEvents>());
-  constexpr std::size_t firstEnumeratedChoice = 1;
-  constexpr std::size_t enqueuedEvents = 2;
-  constexpr std::size_t beyondTheComposition = 3;
+  constexpr std::size_t firstChoice = 0;
+  constexpr std::size_t enqueuedEvents = 1;
+  constexpr std::size_t beyondTheComposition = 2;
   auto controller = std::make_shared<Controller>(std::move(dispatchers));
 
   Engine engine(Test::dataProvider(input), controller, monitor);
@@ -84,11 +83,11 @@ int main(int argc, char** argv) {
     return nullptr;
   };
 
-  check(controller->isActive(firstEnumeratedChoice), "every dispatcher speaks in a composition as composed");
+  check(controller->isActive(firstChoice), "every dispatcher speaks in a composition as composed");
 
   // Silenced, the choice is left to the caller: the engine reaches the decision task and stands at it.
-  controller->deactivate(firstEnumeratedChoice);
-  check(!controller->isActive(firstEnumeratedChoice), "the dispatcher reports that it is silenced");
+  controller->deactivate(firstChoice);
+  check(!controller->isActive(firstChoice), "the dispatcher reports that it is silenced");
 
   engine.initialize();
   while (engine.advance()) {
@@ -100,8 +99,8 @@ int main(int argc, char** argv) {
 
   // Spoken again, the same dispatcher settles the choice from candidates it kept observing while silent,
   // with nothing rebuilt and no new composition.
-  controller->activate(firstEnumeratedChoice);
-  check(controller->isActive(firstEnumeratedChoice), "the dispatcher reports that it speaks again");
+  controller->activate(firstChoice);
+  check(controller->isActive(firstChoice), "the dispatcher reports that it speaks again");
 
   unsigned int guard = 0;
   while (engine.advance() && guard++ < 10000) {

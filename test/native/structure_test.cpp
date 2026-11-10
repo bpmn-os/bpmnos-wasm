@@ -85,14 +85,15 @@ int main(int argc, char** argv) {
     check(choices[1]["discretized"] == true, "and states a discretizer");
   }
 
-  // a bounded choice stating no discretizer is a pair of bounds all the same
+  // a bounded choice stating no discretizer is a pair of bounds all the same, the type of an integer implying
+  // a step and that of a decimal none
   {
     auto described = describeModel(readFile(fixtureDir + "/DecisionTask_with_implicit_step.bpmn"), {});
     const auto& choices = described["decisions"][0]["choices"];
     check(choices.size() == 2, "both choices are reported");
     check(choices[0]["kind"] == "bounds" && choices[1]["kind"] == "bounds", "both stated as bounds");
-    check(choices[0]["discretized"] == false && choices[1]["discretized"] == false,
-      "neither stating a discretizer");
+    check(choices[0]["discretized"] == true && choices[1]["discretized"] == false,
+      "the integer having the step its type implies and the decimal none");
     check(choices[0]["attribute"]["type"] == "integer" && choices[1]["attribute"]["type"] == "decimal",
       "and their types are what the model declares");
   }

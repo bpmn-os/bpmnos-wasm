@@ -23,9 +23,9 @@ namespace BPMNOS::WASM::Test {
  * @brief The interactive composition: what is unambiguous resolves itself, everything else waits for the
  * caller.
  *
- * The first feasible non sequential entry and the directly addressed message delivery are settled by their
- * dispatchers. No dispatcher offers a choice, the entry of a child of a
- * sequential ad hoc subprocess, or an ambiguous message delivery, so those reach the queue. No dispatcher
+ * The engine itself enters every activity that is not a child of a sequential ad hoc subprocess and delivers
+ * every directly addressed message. No dispatcher offers a choice, the entry of a child of a sequential ad hoc
+ * subprocess, or an ambiguous message delivery, so those reach the queue. No dispatcher
  * advances time, so with a data provider holding time it advances only by a tick the caller enqueues.
  *
  * The queue comes first. A position is a precedence, and the queue is what the caller says while everything
@@ -34,12 +34,8 @@ namespace BPMNOS::WASM::Test {
  * run happens to have nothing left to settle. It costs nothing at the fetches where it is empty.
  */
 inline std::shared_ptr<Controller> interactiveController() {
-  auto evaluator = std::make_shared<Execution::GuidedEvaluator>();
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
   dispatchers.push_back(std::make_unique<EnqueuedEvents>());
-  dispatchers.push_back(
-    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator));
-  dispatchers.push_back(std::make_unique<Execution::InstantDirectMessage>());
   return std::make_shared<Controller>(std::move(dispatchers));
 }
 
@@ -56,10 +52,7 @@ inline std::shared_ptr<Controller> greedyController() {
   std::vector<std::unique_ptr<Execution::EventDispatcher>> dispatchers;
   dispatchers.push_back(std::make_unique<EnqueuedEvents>());
   dispatchers.push_back(
-    std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator));
-  dispatchers.push_back(std::make_unique<Execution::InstantDirectMessage>());
-  dispatchers.push_back(
-    std::make_unique<Execution::GreedyDispatcher<Execution::FirstEnumeratedChoice>>(evaluator));
+    std::make_unique<Execution::GreedyDispatcher<Execution::FirstChoice>>(evaluator));
   dispatchers.push_back(
     std::make_unique<Execution::GreedyDispatcher<Execution::CompetingCandidates>>(evaluator));
   return std::make_shared<Controller>(std::move(dispatchers));

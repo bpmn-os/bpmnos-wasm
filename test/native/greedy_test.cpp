@@ -81,7 +81,8 @@ int main(int argc, char** argv) {
   bool refusedWithout = false;
   try {
     std::vector<std::unique_ptr<Execution::EventDispatcher>> none;
-    none.push_back(std::make_unique<Execution::InstantDirectMessage>());
+    none.push_back(std::make_unique<Execution::GreedyDispatcher<Execution::FirstChoice>>(
+      std::make_shared<Execution::GuidedEvaluator>()));
     Controller composed(std::move(none));
   }
   catch (const std::exception&) {

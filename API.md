@@ -33,7 +33,7 @@ One node may perform for several subprocesses, and its activities are then all o
 Each decision task is reported with the choices it states, in the order it states them and with the
 attribute each is of, named by the identifier it is resolved by as well as by its name and its type. A
 choice is stated either as an enumeration or as a pair of bounds, which `kind` names as `"enumeration"` or
-`"bounds"`, and `discretized` says whether a bounded one states a discretizer. Which of the two a choice is
+`"bounds"`, and `discretized` says whether a bounded one has a step, stated by the model or, for an integer or a boolean, implied by the type of its attribute. Which of the two a choice is
 was settled when the model was built, so a caller drawing a control for a choice takes it from here rather
 than reading the condition again, which would restate the engine's grammar in another language. Nothing
 here is evaluated, and what a choice may take is asked of the controller instead, since it depends on the
@@ -137,24 +137,26 @@ that distinguishes it:
 
 | Name | Dispatches |
 | --- | --- |
-| `FirstFeasibleEntry` | the first feasible entry, excluding children of a sequential ad hoc subprocess |
-| `FirstEnumeratedChoice` | the best feasible choice of a decision task, by enumeration |
-| `FirstBisectionalChoice` | the same, by bisection over a bounded choice |
+| `FirstFeasibleEntry` | the first feasible entry of a child of a sequential ad hoc subprocess, without ranking |
+| `FirstChoice` | the best feasible choice of a decision task, every choice with a step being enumerated and a decimal choice without one bisected |
 | `SequentialEntries` | the best feasible entry of a child of a sequential ad hoc subprocess |
-| `MessageDeliveries` | the best feasible message delivery |
+| `MessageDeliveries` | the best feasible delivery of a message that is not directly addressed |
 | `CompetingCandidates` | the best of the two above, which have no precedence over each other |
-| `InstantDirectMessage` | a delivery whose sender addresses its recipient, or whose recipient names its sender |
 | `EnqueuedEvents` | what the caller enqueued and has not expired |
+
+The engine itself enters every activity that is not a child of a sequential ad hoc subprocess, as soon as its
+entry restrictions are satisfied, and delivers every message whose sender addresses its recipient or whose
+recipient names its sender, so that neither is a decision and no dispatcher is composed for them.
 
 The evaluator is `"GuidedEvaluator"` (the default) or `"LocalEvaluator"`, and every dispatcher that
 evaluates shares the one built here. Exactly one `EnqueuedEvents` is required: without it nothing could be
 enqueued, and with several the precedence would fall to whichever was found first. No dispatcher advances
 time: the data provider does, or the engine when it is let advance time.
 
-The interactive composition is `["FirstFeasibleEntry", "InstantDirectMessage", "EnqueuedEvents"]`: the unambiguous decisions resolve themselves, and the choice, the sequential ad hoc entry
-and the ambiguous message delivery fall to the caller; with a data provider holding time, time advances only
-by an enqueued tick. The greedy composition adds `"FirstEnumeratedChoice"` and `"CompetingCandidates"` before
-the queue, and with the engine let advance time a run needs nothing from the caller at all.
+The interactive composition is `["EnqueuedEvents"]`: what the engine carries out itself happens, and the
+choice, the sequential ad hoc entry and the ambiguous message delivery fall to the caller; with a data
+provider holding time, time advances only by an enqueued tick. The greedy composition adds `"FirstChoice"` and
+`"CompetingCandidates"`, and with the engine let advance time a run needs nothing from the caller at all.
 
 - `getPendingDecisions(): string` — `[{"type": "entry"|"choice"|"messageDelivery", "instanceId":
   s, "nodeId": s}]`.
@@ -226,7 +228,7 @@ input.setInstance(instanceCsv);
 const monitor = new module.Monitor();
 monitor.addObserver(entryJson => log(JSON.parse(entryJson)));
 const controller = new module.Controller(JSON.stringify({
-  dispatchers: [ 'FirstFeasibleEntry', 'InstantDirectMessage', 'EnqueuedEvents' ]
+  dispatchers: [ 'EnqueuedEvents' ]
 }));
 const engine = new module.Engine(
   input, JSON.stringify({ provider: 'static', clockTickDuration: 'hold' }), controller, monitor);

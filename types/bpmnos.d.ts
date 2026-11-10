@@ -183,7 +183,8 @@ export interface BPMNOSModule {
    *
    * Each decision task is reported with the choices it states, in order, each of them either an
    * enumeration or a pair of bounds, which kind names as "enumeration" or "bounds"; discretized says
-   * whether a bounded one states a discretizer. Which of the two a choice is was settled when the model
+   * whether a bounded one has a step, stated by the model or, for an integer or a boolean, implied by the
+   * type of its attribute. Which of the two a choice is was settled when the model
    * was built, so a caller drawing a control takes it from here rather than reading the condition again.
    * Nothing here is evaluated, and what a choice may take is asked of the controller.
    */
@@ -205,9 +206,10 @@ export interface BPMNOSModule {
    * {"evaluator":name?,"dispatchers":[name,...]}.
    *
    * A dispatcher is named by its class, or, for the ones a greedy dispatcher drives, by the candidates
-   * class that distinguishes it: "FirstFeasibleEntry", "FirstEnumeratedChoice",
-   * "FirstBisectionalChoice", "SequentialEntries", "MessageDeliveries", "CompetingCandidates",
-   * "InstantDirectMessage", and "EnqueuedEvents". The evaluator
+   * class that distinguishes it: "FirstFeasibleEntry", "FirstChoice", "SequentialEntries",
+   * "MessageDeliveries", "CompetingCandidates", and "EnqueuedEvents". The engine itself enters every
+   * activity that is not a child of a sequential ad hoc subprocess and delivers every directly addressed
+   * message, so that no dispatcher is composed for them. The evaluator
    * is "GuidedEvaluator" (the default) or "LocalEvaluator", and every evaluating dispatcher shares it.
    *
    * What a dispatcher settles is settled without the caller; what none of them settles waits for what the

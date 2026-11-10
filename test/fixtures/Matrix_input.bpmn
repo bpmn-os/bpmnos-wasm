@@ -20,19 +20,21 @@
     <bpmn2:startEvent id="Start_1">
       <bpmn2:outgoing>Flow_1</bpmn2:outgoing>
     </bpmn2:startEvent>
-    <bpmn2:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_1" />
-    <bpmn2:task id="Task_1">
-      <bpmn2:extensionElements>
-        <bpmnos:status>
-          <bpmnos:operators>
-            <bpmnos:operator id="Operator_1" expression="cost := distance[route[1]][route[2]]" />
-          </bpmnos:operators>
-        </bpmnos:status>
-      </bpmn2:extensionElements>
+    <bpmn2:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="AdHocSubProcess_1" />
+    <bpmn2:adHocSubProcess id="AdHocSubProcess_1" ordering="Sequential">
       <bpmn2:incoming>Flow_1</bpmn2:incoming>
       <bpmn2:outgoing>Flow_2</bpmn2:outgoing>
-    </bpmn2:task>
-    <bpmn2:sequenceFlow id="Flow_2" sourceRef="Task_1" targetRef="End_1" />
+      <bpmn2:task id="Task_1">
+        <bpmn2:extensionElements>
+          <bpmnos:status>
+            <bpmnos:operators>
+              <bpmnos:operator id="Operator_1" expression="cost := distance[route[1]][route[2]]" />
+            </bpmnos:operators>
+          </bpmnos:status>
+        </bpmn2:extensionElements>
+      </bpmn2:task>
+    </bpmn2:adHocSubProcess>
+    <bpmn2:sequenceFlow id="Flow_2" sourceRef="AdHocSubProcess_1" targetRef="End_1" />
     <bpmn2:endEvent id="End_1">
       <bpmn2:incoming>Flow_2</bpmn2:incoming>
     </bpmn2:endEvent>

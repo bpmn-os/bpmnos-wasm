@@ -30,15 +30,15 @@ const instanceCsv =
   'Instance_1; Activity_1; x := -2\n';
 
 // The composition is stated here rather than taken from composition.mjs, so that the positions this test
-// switches are the ones it states and no reordering elsewhere can move them. The entry is settled by its
-// dispatcher, so the run reaches the choice; the choice dispatcher is what is silenced;
+// switches are the ones it states and no reordering elsewhere can move them. The engine enters the task
+// itself, so the run reaches the choice; the choice dispatcher is what is silenced;
 // the queue is what the caller would answer through.
 const composition = JSON.stringify({
-  dispatchers: [ 'EnqueuedEvents', 'FirstFeasibleEntry', 'FirstEnumeratedChoice' ]
+  dispatchers: [ 'EnqueuedEvents', 'FirstChoice' ]
 });
 const enqueuedEvents = 0;
-const firstEnumeratedChoice = 2;
-const beyondTheComposition = 3;
+const firstChoice = 1;
+const beyondTheComposition = 2;
 
 const input = new module.Input(modelXml);
 input.setInstance(instanceCsv);
@@ -53,10 +53,10 @@ monitor.addObserver((entryJson) => log.push(JSON.parse(entryJson)));
 const choicePending = () =>
   JSON.parse(controller.getPendingDecisions()).some((decision) => decision.type === 'choice');
 
-check(controller.isActive(firstEnumeratedChoice), 'every dispatcher speaks in a composition as composed');
+check(controller.isActive(firstChoice), 'every dispatcher speaks in a composition as composed');
 
-controller.deactivate(firstEnumeratedChoice);
-check(!controller.isActive(firstEnumeratedChoice), 'the dispatcher reports that it is silenced');
+controller.deactivate(firstChoice);
+check(!controller.isActive(firstChoice), 'the dispatcher reports that it is silenced');
 
 engine.initialize(0);
 while ((await engine.advance()) && !choicePending()) {
@@ -64,8 +64,8 @@ while ((await engine.advance()) && !choicePending()) {
 }
 check(choicePending(), 'with the choice dispatcher silenced the run waits at the choice');
 
-controller.activate(firstEnumeratedChoice);
-check(controller.isActive(firstEnumeratedChoice), 'the dispatcher reports that it speaks again');
+controller.activate(firstChoice);
+check(controller.isActive(firstChoice), 'the dispatcher reports that it speaks again');
 
 let guard = 0;
 while ((await engine.advance()) && guard++ < 10000) {

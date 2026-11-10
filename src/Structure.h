@@ -33,7 +33,7 @@ using json = nlohmann::ordered_json;
  *         "choices": [{"attribute": {"id": s, "name": s, "type": s}, "kind": s, "discretized": b}]}]}`, or
  *         `{"error": message}` where the model could not be built. A choice is stated either as an
  *         enumeration or as a pair of bounds, which `kind` names as `"enumeration"` or `"bounds"`, and
- *         `discretized` says whether a bounded one states a discretizer. Nothing here is evaluated: what a
+ *         `discretized` says whether a bounded one has a step, stated by the model or, for an integer or a boolean, implied by the type of its attribute. Nothing here is evaluated: what a
  *         choice may take is a question for an engine standing at the token, and is asked of the
  *         controller.
  */

@@ -169,11 +169,8 @@ std::unique_ptr<Execution::EventDispatcher> createDispatcher(
   if (name == "FirstFeasibleEntry") {
     return std::make_unique<Execution::GreedyDispatcher<Execution::FirstFeasibleEntry>>(evaluator);
   }
-  if (name == "FirstEnumeratedChoice") {
-    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstEnumeratedChoice>>(evaluator);
-  }
-  if (name == "FirstBisectionalChoice") {
-    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstBisectionalChoice>>(evaluator);
+  if (name == "FirstChoice") {
+    return std::make_unique<Execution::GreedyDispatcher<Execution::FirstChoice>>(evaluator);
   }
   if (name == "SequentialEntries") {
     return std::make_unique<Execution::GreedyDispatcher<Execution::SequentialEntries>>(evaluator);
@@ -183,9 +180,6 @@ std::unique_ptr<Execution::EventDispatcher> createDispatcher(
   }
   if (name == "CompetingCandidates") {
     return std::make_unique<Execution::GreedyDispatcher<Execution::CompetingCandidates>>(evaluator);
-  }
-  if (name == "InstantDirectMessage") {
-    return std::make_unique<Execution::InstantDirectMessage>();
   }
   if (name == "EnqueuedEvents") {
     return std::make_unique<EnqueuedEvents>();

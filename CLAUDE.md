@@ -122,8 +122,9 @@ general values that may be selected, the multiples of the discretizer being coun
 from the bound. `BoundedChoice` therefore carries `lowerBound` and `upperBound`, which are the condition's
 own after strictness and the attribute's type have been resolved, beside `lowest` and `highest`, which are
 the first and the last multiple within them. A caller offers the second pair and may mention the first.
-Where the model states no discretizer the type is asked instead: an integer or a boolean takes whole
-values, so the step is one, and a decimal has nothing implying one and is answered without a step.
+Where the model states no discretizer the type implies one: the choice of an integer or a boolean holds a
+step of one, as `Choice::Choice` sets it, and a decimal has nothing implying one and is answered without a
+step.
 
 The step is the one thing crossing this boundary that is not rounded to what a value may hold. A value is a
 `BPMNOS::number`, a decimal fixed-point number with six places, and the grid the engine admits is the
@@ -157,9 +158,8 @@ attribute's type, by narrowing the interval to the integers within it for everyt
 `0.5 <= x <= 1.5` on an integer admits only one. Neither is recomputed. What the bridge adds is the move to
 the grid, because the values admitted are the multiples of the discretizer counted from zero while a
 caller's control counts its steps from the minimum it is given, and the two agree only once that minimum is
-itself a multiple. A bounded choice stating no discretizer is not asked of `getEnumeration`, which throws
-for a decimal and silently assumes a step of one for an integer or a boolean; its bounds are reported
-unmoved instead. The pending decision lists prune expired entries only while traversed, and a built event
+itself a multiple. A bounded choice of a decimal stating no discretizer is not asked of `getEnumeration`,
+which throws for it; its bounds are reported unmoved instead. The pending decision lists prune expired entries only while traversed, and a built event
 self-validates through `Event::expired()`, so the bridge treats the weak pointer, not list membership, as
 liveness, and never holds a strong reference that would keep an engine object alive.
 

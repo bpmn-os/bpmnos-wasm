@@ -54,8 +54,10 @@ check(stated[1].discretized === true, 'and stating a discretizer');
 const implicit = describe('DecisionTask_with_implicit_step.bpmn');
 check(implicit.decisions[0].choices.every((choice) => choice.kind === 'bounds'),
   'a choice stating no discretizer is a pair of bounds all the same');
-check(implicit.decisions[0].choices.every((choice) => choice.discretized === false),
-  'and is reported as stating none');
+check(implicit.decisions[0].choices[0].discretized === true,
+  'the integer having the step its type implies');
+check(implicit.decisions[0].choices[1].discretized === false,
+  'and the decimal none');
 
 check(none.decisions.length === 0, 'a model without a decision task reports none');
 
